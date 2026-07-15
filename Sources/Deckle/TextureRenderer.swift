@@ -9,6 +9,7 @@ import CoreGraphics
 enum TextureRenderer {
     /// Cached tiles keyed by preset id.
     private static var tileCache: [String: NSImage] = [:]
+    private static var compositeCache: [String: NSImage] = [:]
     private static var previewCache: [String: NSImage] = [:]
 
     /// A small seamless tile; Core Graphics pattern fill repeats it across the
@@ -62,6 +63,24 @@ enum TextureRenderer {
         }
 
         tileCache[preset.id] = image
+        return image
+    }
+
+    /// The overlay tile: grain composited over the preset's tint wash, so a
+    /// single pattern image carries the whole texture. Used as a CALayer
+    /// pattern background — see TextureView for why.
+    static func compositeTile(for preset: TexturePreset) -> NSImage {
+        if let cached = compositeCache[preset.id] { return cached }
+
+        let grain = tile(for: preset)
+        let size = grain.size
+        let image = NSImage(size: size, flipped: false) { rect in
+            preset.tint.withAlphaComponent(preset.tintAlpha).setFill()
+            rect.fill(using: .sourceOver)
+            grain.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            return true
+        }
+        compositeCache[preset.id] = image
         return image
     }
 
