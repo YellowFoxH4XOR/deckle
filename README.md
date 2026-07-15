@@ -1,5 +1,11 @@
 # Deckle
 
+[![Latest release](https://img.shields.io/github/v/release/YellowFoxH4XOR/deckle?label=release&color=B34A22)](https://github.com/YellowFoxH4XOR/deckle/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/YellowFoxH4XOR/deckle/total?color=191713)](https://github.com/YellowFoxH4XOR/deckle/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![macOS 13+](https://img.shields.io/badge/macOS-13%2B-black)
+![Universal](https://img.shields.io/badge/universal-Apple%20Silicon%20%2B%20Intel-555)
+
 **[projects.akshatkatiyar.com/projects/deckle](https://projects.akshatkatiyar.com/projects/deckle/)**
 
 A free, open-source macOS menu bar app that lays a subtle **paper-grain texture over your entire screen**, making long reading and writing sessions feel like paper instead of glass. Inspired by [Paperman](https://paperman.cc/).
@@ -11,6 +17,8 @@ A free, open-source macOS menu bar app that lays a subtle **paper-grain texture 
 Not a blue-light filter — a *matte texture* overlay. The grain breaks up the perfectly uniform backlight glow that makes screens feel harsh, while every pixel of your work stays interactive: the overlay is fully click-through.
 
 ## Features
+
+<img src="docs/menu.png" width="300" align="right" alt="Deckle's menu: texture picker, intensity slider, snooze, and settings">
 
 - **18 paper textures** in three families:
   - *Papers* — Classic Matte, Rice Paper, Whisper Weave, Newsprint, Painter's Press, Artist Canvas, Monastic Felt, Vellum Mist
