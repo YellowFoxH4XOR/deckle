@@ -27,6 +27,8 @@ struct MenuView: View {
                 displaysSection
             }
             Divider()
+            appRulesSection
+            Divider()
             footer
         }
         .padding(14)
@@ -77,10 +79,56 @@ struct MenuView: View {
             VStack(alignment: .leading, spacing: 10) {
                 textureGroup(title: "Papers", presets: TexturePreset.light)
                 textureGroup(title: "Dark", presets: TexturePreset.dark)
+                myPapersGroup
             }
             .padding(.vertical, 2)
         }
         .frame(height: 264)
+    }
+
+    private var myPapersGroup: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("My Papers")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("New…") { PaperMill.shared.open() }
+                    .controlSize(.mini)
+                Button("Import…") { PaperFiles.importPapers() }
+                    .controlSize(.mini)
+                Button("Community…") { CommunityBrowser.shared.open() }
+                    .controlSize(.mini)
+            }
+            if !state.customPapers.isEmpty {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
+                    spacing: 8
+                ) {
+                    ForEach(state.customPapers) { paper in
+                        TextureSwatch(
+                            preset: TexturePreset(custom: paper),
+                            isSelected: paper.id == state.textureID
+                        ) {
+                            state.textureID = paper.id
+                        }
+                        .contextMenu {
+                            Button("Edit…") { PaperMill.shared.open(editing: paper) }
+                            Button("Export…") { PaperFiles.export(paper) }
+                            Divider()
+                            Button("Delete", role: .destructive) {
+                                state.customPapers.removeAll { $0.id == paper.id }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("Blend your own paper in the Mill — tint, wash, weave, blotch.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
     }
 
     private func textureGroup(title: String, presets: [TexturePreset]) -> some View {
@@ -191,6 +239,76 @@ struct MenuView: View {
                 }
             }
         )
+    }
+
+    @State private var appRulesExpanded = false
+
+    private var appRulesSection: some View {
+        DisclosureGroup(isExpanded: $appRulesExpanded) {
+            VStack(alignment: .leading, spacing: 6) {
+                Picker("", selection: $state.appRuleMode) {
+                    Text("Everywhere").tag(AppState.AppRuleMode.everywhere)
+                    Text("Except…").tag(AppState.AppRuleMode.except)
+                    Text("Only…").tag(AppState.AppRuleMode.only)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                if state.appRuleMode != .everywhere {
+                    ForEach(state.ruleApps) { app in
+                        HStack {
+                            Text(app.name)
+                                .font(.caption)
+                            Spacer()
+                            Button {
+                                state.ruleApps.removeAll { $0.bundleID == app.bundleID }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    Button("Add App…") { addRuleApp() }
+                        .controlSize(.small)
+                    Text(state.appRuleMode == .except
+                         ? "Paper hides while these apps are active"
+                         : "Paper shows only while these apps are active")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.top, 6)
+        } label: {
+            HStack(spacing: 6) {
+                Text("App rules")
+                    .font(.subheadline)
+                if state.appRuleMode != .everywhere {
+                    Text(state.appRuleMode == .except ? "except \(state.ruleApps.count)" : "only \(state.ruleApps.count)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .disabled(!state.isEnabled)
+    }
+
+    private func addRuleApp() {
+        let panel = NSOpenPanel()
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.allowsMultipleSelection = true
+        panel.message = "Choose apps for the rule list"
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls {
+            guard let bundle = Bundle(url: url), let id = bundle.bundleIdentifier else { continue }
+            let name = (bundle.infoDictionary?["CFBundleDisplayName"] as? String)
+                ?? (bundle.infoDictionary?["CFBundleName"] as? String)
+                ?? url.deletingPathExtension().lastPathComponent
+            if !state.ruleApps.contains(where: { $0.bundleID == id }) {
+                state.ruleApps.append(.init(bundleID: id, name: name))
+            }
+        }
     }
 
     private var footer: some View {

@@ -27,6 +27,12 @@ struct MenuBarLabel: View {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            URLCommands.handle(url)
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Menu-bar-only app: no Dock icon, no app switcher entry. The bundled
         // app also sets LSUIElement, but this covers `swift run` during

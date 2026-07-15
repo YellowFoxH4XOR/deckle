@@ -35,7 +35,11 @@ final class UpdateManager: ObservableObject {
     }
 
     private var downloadURL: URL?
-    private var checkTimer: Timer?
+    /// System-scheduled daily check: unlike a Timer, the OS coalesces the
+    /// wakeup with other activity and prefers energy-cheap moments.
+    private let checkActivity = NSBackgroundActivityScheduler(
+        identifier: "app.deckle.Deckle.update-check"
+    )
     private let releasesPage = URL(string: "https://github.com/YellowFoxH4XOR/deckle/releases/latest")!
     private let apiURL = URL(string: "https://api.github.com/repos/YellowFoxH4XOR/deckle/releases/latest")!
 
@@ -44,13 +48,21 @@ final class UpdateManager: ObservableObject {
     }
 
     func start() {
-        // First check shortly after launch, then daily.
+        // First check shortly after launch, then roughly daily — the wide
+        // tolerance lets macOS batch our wakeup with everything else's.
         Task {
             try? await Task.sleep(for: .seconds(5))
             await check()
         }
-        checkTimer = Timer.scheduledTimer(withTimeInterval: 24 * 60 * 60, repeats: true) { _ in
-            Task { @MainActor in await UpdateManager.shared.check() }
+        checkActivity.repeats = true
+        checkActivity.interval = 24 * 60 * 60
+        checkActivity.tolerance = 4 * 60 * 60
+        checkActivity.qualityOfService = .utility
+        checkActivity.schedule { completion in
+            Task { @MainActor in
+                await UpdateManager.shared.check()
+                completion(.finished)
+            }
         }
     }
 
