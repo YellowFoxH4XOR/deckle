@@ -16,7 +16,7 @@ jobs:
       # but shows Gatekeeper's "unverified developer" prompt).
       HAS_SIGNING: ${{ secrets.MACOS_CERT_P12 != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Import Developer ID certificate
         if: env.HAS_SIGNING == 'true'
@@ -58,7 +58,7 @@ jobs:
           shasum -a 256 Deckle-*.dmg | tee Deckle.dmg.sha256
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/Deckle-*.dmg
