@@ -19,6 +19,8 @@ struct MenuView: View {
             Divider()
             textureSections
             Divider()
+            grainSection
+            Divider()
             snoozeSection
             if NSScreen.screens.count > 1 {
                 Divider()
@@ -101,6 +103,37 @@ struct MenuView: View {
                 }
             }
         }
+    }
+
+    private var grainSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Grain")
+                    .font(.subheadline)
+                Spacer()
+                Picker("", selection: $state.grainScale) {
+                    Text("Fine").tag(0.5)
+                    Text("Normal").tag(1.0)
+                    Text("Coarse").tag(2.0)
+                    Text("Grainy").tag(4.0)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 210)
+            }
+            HStack {
+                Text("Strength")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: $state.grainStrength, in: 0.25...2.0)
+                Text("\(Int(state.grainStrength * 100))%")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 38, alignment: .trailing)
+            }
+        }
+        .disabled(!state.isEnabled)
     }
 
     private var snoozeSection: some View {

@@ -35,6 +35,20 @@ final class AppState: ObservableObject {
         didSet { defaults.set(hideFromCapture, forKey: Keys.hideFromCapture) }
     }
 
+    /// Grain size multiplier (0.5 fine … 4 grainy), applied to every texture.
+    @Published var grainScale: Double {
+        didSet { defaults.set(grainScale, forKey: Keys.grainScale) }
+    }
+
+    /// Grain visibility multiplier (0.25 … 2), applied to every texture.
+    @Published var grainStrength: Double {
+        didSet { defaults.set(grainStrength, forKey: Keys.grainStrength) }
+    }
+
+    var grainAdjustments: TextureRenderer.GrainAdjustments {
+        .init(scale: grainScale, strength: grainStrength)
+    }
+
     var texture: TexturePreset { TexturePreset.preset(id: textureID) }
 
     var isSnoozed: Bool {
@@ -60,6 +74,8 @@ final class AppState: ObservableObject {
         static let texture = "textureID"
         static let excluded = "excludedDisplays"
         static let hideFromCapture = "hideFromCapture"
+        static let grainScale = "grainScale"
+        static let grainStrength = "grainStrength"
     }
 
     private let defaults = UserDefaults.standard
@@ -71,6 +87,8 @@ final class AppState: ObservableObject {
         textureID = defaults.string(forKey: Keys.texture) ?? TexturePreset.all[0].id
         excludedDisplays = Set(defaults.stringArray(forKey: Keys.excluded) ?? [])
         hideFromCapture = defaults.bool(forKey: Keys.hideFromCapture)
+        grainScale = defaults.object(forKey: Keys.grainScale) as? Double ?? 1.0
+        grainStrength = defaults.object(forKey: Keys.grainStrength) as? Double ?? 1.0
     }
 
     private func scheduleSnoozeExpiry() {
