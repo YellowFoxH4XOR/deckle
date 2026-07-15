@@ -17,6 +17,7 @@ Not a blue-light filter — a *matte texture* overlay. The grain breaks up the p
 - **Intensity slider** (5–45%)
 - **Global hotkey** — ⌥⌘P toggles the texture from any app
 - **In-app updates** — checks GitHub Releases daily; one-click update, or turn on automatic installs
+- **Capture privacy** — optionally hide the texture from screenshots and screen recordings while it stays visible to you
 - **Snooze** for 15 min / 30 min / 1 h — auto-resumes
 - **Multi-monitor support** with per-display on/off
 - **Launch at login**
@@ -77,7 +78,6 @@ No dependencies; pure Swift + AppKit + SwiftUI.
 
 - Circadian scheduling (auto-enable at sunset)
 - Per-app exclusions
-- Option to hide the texture from screenshots/recordings (`NSWindow.sharingType`)
 
 ## License
 

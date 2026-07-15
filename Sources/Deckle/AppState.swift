@@ -29,6 +29,12 @@ final class AppState: ObservableObject {
         didSet { defaults.set(Array(excludedDisplays), forKey: Keys.excluded) }
     }
 
+    /// When on, overlay windows opt out of screen capture — screenshots and
+    /// recordings show clean content while the texture stays visible to you.
+    @Published var hideFromCapture: Bool {
+        didSet { defaults.set(hideFromCapture, forKey: Keys.hideFromCapture) }
+    }
+
     var texture: TexturePreset { TexturePreset.preset(id: textureID) }
 
     var isSnoozed: Bool {
@@ -53,6 +59,7 @@ final class AppState: ObservableObject {
         static let intensity = "intensity"
         static let texture = "textureID"
         static let excluded = "excludedDisplays"
+        static let hideFromCapture = "hideFromCapture"
     }
 
     private let defaults = UserDefaults.standard
@@ -63,6 +70,7 @@ final class AppState: ObservableObject {
         intensity = defaults.object(forKey: Keys.intensity) as? Double ?? 0.22
         textureID = defaults.string(forKey: Keys.texture) ?? TexturePreset.all[0].id
         excludedDisplays = Set(defaults.stringArray(forKey: Keys.excluded) ?? [])
+        hideFromCapture = defaults.bool(forKey: Keys.hideFromCapture)
     }
 
     private func scheduleSnoozeExpiry() {

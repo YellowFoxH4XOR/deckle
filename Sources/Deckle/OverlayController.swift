@@ -47,6 +47,9 @@ final class OverlayController {
 
             window.setFrame(screen.frame, display: true)
             window.apply(texture: state.texture)
+            // .none removes the overlay from screenshots/recordings while it
+            // stays visible on the physical display.
+            window.sharingType = state.hideFromCapture ? .none : .readOnly
 
             if visible {
                 if window.isVisible {

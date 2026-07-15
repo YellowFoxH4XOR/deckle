@@ -163,6 +163,9 @@ struct MenuView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
             updateRow
+            Toggle("Hide texture in screenshots & recordings", isOn: $state.hideFromCapture)
+                .toggleStyle(.checkbox)
+                .font(.caption)
             HStack {
                 Toggle("Launch at login", isOn: launchAtLoginBinding)
                     .toggleStyle(.checkbox)
