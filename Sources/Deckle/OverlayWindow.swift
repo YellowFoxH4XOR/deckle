@@ -39,23 +39,26 @@ final class OverlayWindow: NSWindow {
     }
 }
 
-/// Draws the tint wash plus the tiled grain pattern.
+/// Shows the texture as a CALayer pattern background instead of drawing it.
+/// A drawn view forces AppKit to allocate window-sized backing stores
+/// (~30 MB per buffer on a Retina display); a pattern background color is
+/// tiled by the CoreAnimation render server from the single 256×256 tile,
+/// so the overlay costs kilobytes of process memory regardless of screen size.
 final class TextureView: NSView {
     private var texture: TexturePreset?
-    private var tile: NSImage?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .never
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     func apply(texture: TexturePreset) {
         guard texture != self.texture else { return }
         self.texture = texture
-        self.tile = TextureRenderer.tile(for: texture)
-        needsDisplay = true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let texture, let tile else { return }
-        texture.tint.withAlphaComponent(texture.tintAlpha).setFill()
-        bounds.fill(using: .sourceOver)
-        NSColor(patternImage: tile).setFill()
-        bounds.fill(using: .sourceOver)
+        let tile = TextureRenderer.compositeTile(for: texture)
+        layer?.backgroundColor = NSColor(patternImage: tile).cgColor
     }
 }

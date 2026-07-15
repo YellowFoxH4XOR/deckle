@@ -63,7 +63,7 @@ Or `make run` to try it from `dist/` without installing. Look for the paper-shee
 ## How it works
 
 - One borderless, transparent `NSWindow` per display at `.screenSaver` window level (above the menu bar), with `ignoresMouseEvents = true` so all input passes through.
-- The paper grain replicates SVG's `feTurbulence type="fractalNoise" baseFrequency="1.5" numOctaves="3"`: several octaves of seamlessly tileable value noise are summed, then mapped to translucent dark/light speckles. One 256×256 tile is generated per texture and pattern-tiled across the screen by Core Graphics.
+- The paper grain replicates SVG's `feTurbulence type="fractalNoise" baseFrequency="1.5" numOctaves="3"`: several octaves of seamlessly tileable value noise are summed, then mapped to translucent dark/light speckles. One 256×256 tile is generated per texture and tiled across the screen by the CoreAnimation render server, so memory stays flat no matter the resolution.
 - The intensity slider just drives the overlay window's `alphaValue` — the texture itself is rendered once and cached.
 
 ## Development
