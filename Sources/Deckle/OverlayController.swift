@@ -58,7 +58,7 @@ final class OverlayController {
             }()
 
             window.setFrame(screen.frame, display: true)
-            window.apply(texture: state.texture)
+            window.apply(texture: state.texture, adjustments: state.grainAdjustments)
 
             if visible {
                 if window.isVisible {

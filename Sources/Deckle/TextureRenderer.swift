@@ -9,20 +9,36 @@ import CoreGraphics
 enum TextureRenderer {
     /// Cached tiles keyed by preset id.
     private static var tileCache: [String: NSImage] = [:]
-    private static var compositeCache: [String: NSImage] = [:]
+    private static var compositeCache: [String: (key: String, image: NSImage)] = [:]
     private static var previewCache: [String: NSImage] = [:]
+
+    /// User-tunable grain adjustments, applied on top of any preset.
+    /// `scale` multiplies the noise cell sizes (snapped to powers of two so
+    /// tiles stay seamless); `strength` multiplies speckle visibility.
+    struct GrainAdjustments: Equatable {
+        var scale: Double = 1.0
+        var strength: Double = 1.0
+
+        static let none = GrainAdjustments()
+        var cacheKey: String { String(format: "s%.2f-k%.2f", scale, strength) }
+    }
 
     /// A small seamless tile; Core Graphics pattern fill repeats it across the
     /// screen, so a huge display costs the same memory as this one tile.
-    static func tile(for preset: TexturePreset) -> NSImage {
-        if let cached = tileCache[preset.id] { return cached }
+    static func tile(
+        for preset: TexturePreset,
+        adjustments: GrainAdjustments = .none
+    ) -> NSImage {
+        if adjustments == .none, let cached = tileCache[preset.id] { return cached }
 
         let pixelSize = 256
-        let noise = fractalNoise(size: pixelSize, preset: preset)
+        let noise = fractalNoise(size: pixelSize, preset: preset, adjustments: adjustments)
 
         var pixels = [UInt8](repeating: 0, count: pixelSize * pixelSize * 4)
         let dark = preset.darkColor.usingColorSpace(.sRGB)!
         let light = preset.lightColor.usingColorSpace(.sRGB)!
+        let darkStrength = min(1, preset.darkStrength * Float(adjustments.strength))
+        let lightStrength = min(1, preset.lightStrength * Float(adjustments.strength))
 
         for i in 0..<(pixelSize * pixelSize) {
             let delta = noise[i] - 0.5
@@ -30,10 +46,10 @@ enum TextureRenderer {
             let alpha: Float
             if delta < 0 {
                 color = dark
-                alpha = min(1, -delta * 2) * preset.darkStrength
+                alpha = min(1, -delta * 2) * darkStrength
             } else {
                 color = light
-                alpha = min(1, delta * 2) * preset.lightStrength
+                alpha = min(1, delta * 2) * lightStrength
             }
             // Premultiplied RGBA
             let a = CGFloat(alpha)
@@ -62,17 +78,24 @@ enum TextureRenderer {
             )
         }
 
-        tileCache[preset.id] = image
+        if adjustments == .none { tileCache[preset.id] = image }
         return image
     }
 
     /// The overlay tile: grain composited over the preset's tint wash, so a
     /// single pattern image carries the whole texture. Used as a CALayer
-    /// pattern background — see TextureView for why.
-    static func compositeTile(for preset: TexturePreset) -> NSImage {
-        if let cached = compositeCache[preset.id] { return cached }
+    /// pattern background — see TextureView for why. Only the most recent
+    /// adjusted variant per preset is kept, so slider drags don't grow memory.
+    static func compositeTile(
+        for preset: TexturePreset,
+        adjustments: GrainAdjustments = .none
+    ) -> NSImage {
+        let key = "\(preset.id)-\(adjustments.cacheKey)"
+        if let cached = compositeCache[preset.id], cached.key == key {
+            return cached.image
+        }
 
-        let grain = tile(for: preset)
+        let grain = tile(for: preset, adjustments: adjustments)
         let size = grain.size
         let image = NSImage(size: size, flipped: false) { rect in
             preset.tint.withAlphaComponent(preset.tintAlpha).setFill()
@@ -80,7 +103,7 @@ enum TextureRenderer {
             grain.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
             return true
         }
-        compositeCache[preset.id] = image
+        compositeCache[preset.id] = (key, image)
         return image
     }
 
@@ -113,13 +136,21 @@ enum TextureRenderer {
 
     /// Sums the preset's octaves of tileable value noise (plus optional weave
     /// modulation) into a [0, 1] field.
-    private static func fractalNoise(size: Int, preset: TexturePreset) -> [Float] {
+    private static func fractalNoise(
+        size: Int,
+        preset: TexturePreset,
+        adjustments: GrainAdjustments = .none
+    ) -> [Float] {
         var rng = SplitMix64(seed: stableSeed(preset.id))
         var out = [Float](repeating: 0, count: size * size)
         let totalWeight = preset.octaves.reduce(Float(0)) { $0 + $1.weight }
 
         for octave in preset.octaves {
-            let layer = valueNoise(size: size, cell: octave.cell, rng: &rng)
+            // Snap scaled cells to powers of two: only divisors of the tile
+            // size wrap cleanly, anything else would show a seam.
+            let scaled = Double(octave.cell) * adjustments.scale
+            let cell = 1 << max(0, min(6, Int(log2(max(1, scaled)).rounded())))
+            let layer = valueNoise(size: size, cell: cell, rng: &rng)
             let w = octave.weight / totalWeight
             for i in 0..<out.count {
                 out[i] += layer[i] * w
@@ -127,7 +158,10 @@ enum TextureRenderer {
         }
 
         if let weave = preset.weave {
-            let k = 2 * Float.pi / Float(weave.period)
+            // Whole cycles across the tile, or the weave itself would seam.
+            let period = Double(weave.period) * adjustments.scale
+            let cycles = max(1, (Double(size) / period).rounded())
+            let k = 2 * Float.pi * Float(cycles) / Float(size)
             for y in 0..<size {
                 let sy = sin(Float(y) * k)
                 for x in 0..<size {

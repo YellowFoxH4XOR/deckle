@@ -34,8 +34,8 @@ final class OverlayWindow: NSWindow {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    func apply(texture: TexturePreset) {
-        textureView.apply(texture: texture)
+    func apply(texture: TexturePreset, adjustments: TextureRenderer.GrainAdjustments) {
+        textureView.apply(texture: texture, adjustments: adjustments)
     }
 }
 
@@ -46,6 +46,7 @@ final class OverlayWindow: NSWindow {
 /// so the overlay costs kilobytes of process memory regardless of screen size.
 final class TextureView: NSView {
     private var texture: TexturePreset?
+    private var adjustments: TextureRenderer.GrainAdjustments = .none
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -55,10 +56,11 @@ final class TextureView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func apply(texture: TexturePreset) {
-        guard texture != self.texture else { return }
+    func apply(texture: TexturePreset, adjustments: TextureRenderer.GrainAdjustments) {
+        guard texture != self.texture || adjustments != self.adjustments else { return }
         self.texture = texture
-        let tile = TextureRenderer.compositeTile(for: texture)
+        self.adjustments = adjustments
+        let tile = TextureRenderer.compositeTile(for: texture, adjustments: adjustments)
         layer?.backgroundColor = NSColor(patternImage: tile).cgColor
     }
 }
