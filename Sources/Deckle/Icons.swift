@@ -1,45 +1,29 @@
 import AppKit
 
-/// Menu bar glyphs, drawn in code as template images so they adapt to
-/// light/dark menu bars automatically. The sheet is filled while the overlay
-/// is active and outlined while it's off — a glanceable state indicator.
+/// Menu bar glyphs from the "1c — The Letter" icon concept: an italic serif
+/// lowercase "d". Bold at full strength while the overlay is active; regular
+/// at 40% while it's off — a glanceable state indicator. Drawn as template
+/// images so they adapt to light/dark menu bars automatically.
 enum Icons {
-    static let menuOn = makeMenuIcon(filled: true)
-    static let menuOff = makeMenuIcon(filled: false)
+    static let menuOn = makeMenuIcon(active: true)
+    static let menuOff = makeMenuIcon(active: false)
 
-    private static func makeMenuIcon(filled: Bool) -> NSImage {
-        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
-            let sheet = NSRect(x: 3.5, y: 2.5, width: 11, height: 13)
-            let fold: CGFloat = 4
-
-            let path = NSBezierPath()
-            path.move(to: NSPoint(x: sheet.minX, y: sheet.minY))
-            path.line(to: NSPoint(x: sheet.maxX, y: sheet.minY))
-            path.line(to: NSPoint(x: sheet.maxX, y: sheet.maxY - fold))
-            path.line(to: NSPoint(x: sheet.maxX - fold, y: sheet.maxY))
-            path.line(to: NSPoint(x: sheet.minX, y: sheet.maxY))
-            path.close()
-
-            let flap = NSBezierPath()
-            flap.move(to: NSPoint(x: sheet.maxX - fold, y: sheet.maxY))
-            flap.line(to: NSPoint(x: sheet.maxX, y: sheet.maxY - fold))
-            flap.line(to: NSPoint(x: sheet.maxX - fold, y: sheet.maxY - fold))
-            flap.close()
-
-            if filled {
-                NSColor.black.setFill()
-                path.fill()
-                // Knock the flap out so the fold reads even when filled
-                NSColor.black.withAlphaComponent(0.35).setFill()
-                flap.fill()
-            } else {
-                NSColor.black.setStroke()
-                path.lineWidth = 1.4
-                path.stroke()
-                flap.lineWidth = 1
-                NSColor.black.withAlphaComponent(0.7).setStroke()
-                flap.stroke()
-            }
+    private static func makeMenuIcon(active: Bool) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            // Newsreader in the design; Georgia is the design's own fallback
+            // and ships with macOS.
+            let fontName = active ? "Georgia-BoldItalic" : "Georgia-Italic"
+            let font = NSFont(name: fontName, size: 16)
+                ?? NSFont.systemFont(ofSize: 16, weight: active ? .bold : .regular)
+            let letter = NSAttributedString(string: "d", attributes: [
+                .font: font,
+                .foregroundColor: NSColor.black.withAlphaComponent(active ? 1.0 : 0.4),
+            ])
+            let size = letter.size()
+            letter.draw(at: NSPoint(
+                x: (rect.width - size.width) / 2,
+                y: (rect.height - size.height) / 2
+            ))
             return true
         }
         image.isTemplate = true

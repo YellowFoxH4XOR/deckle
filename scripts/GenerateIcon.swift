@@ -1,160 +1,93 @@
-// Generates AppIcon.icns in the modern macOS style: a warm gradient squircle
-// holding a slightly rotated paper sheet with a folded corner, fine grain,
-// and suggested text lines. Run: swift scripts/GenerateIcon.swift <output-dir>
+// Generates AppIcon.icns from the "1c — The Letter" concept in the Deckle
+// design project: a warm paper squircle with fine grain, a letterpress
+// italic serif "d", and a vermillion dot at the lower right.
+// Run: swift scripts/GenerateIcon.swift <output-dir>
 import AppKit
 
 let outputDir = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "build"
 let iconsetPath = "\(outputDir)/AppIcon.iconset"
 try? FileManager.default.createDirectory(atPath: iconsetPath, withIntermediateDirectories: true)
 
-func drawIcon(pixels: Int) -> CGImage {
+// Design palette (from Deckle Icons.dc.html, option 1c)
+let paper = NSColor(srgbRed: 0.945, green: 0.937, blue: 0.914, alpha: 1) // #F1EFE9
+let ink = NSColor(srgbRed: 0.098, green: 0.090, blue: 0.075, alpha: 1)   // #191713
+let vermillion = NSColor(srgbRed: 0.702, green: 0.290, blue: 0.133, alpha: 1) // #B34A22
+
+func drawIcon(pixels: Int) -> NSBitmapImageRep {
     let s = CGFloat(pixels)
-    let context = CGContext(
-        data: nil, width: pixels, height: pixels,
-        bitsPerComponent: 8, bytesPerRow: 0,
-        space: CGColorSpace(name: CGColorSpace.sRGB)!,
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels,
+        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+        colorSpaceName: .calibratedRGB, bytesPerRow: 0, bitsPerPixel: 0
     )!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
 
     // Apple's icon grid: content occupies ~82% of the canvas.
     let margin = s * 0.093
-    let bg = CGRect(x: margin, y: margin, width: s - margin * 2, height: s - margin * 2)
-    let radius = bg.width * 0.225
-    let squircle = CGPath(roundedRect: bg, cornerWidth: radius, cornerHeight: radius, transform: nil)
-
-    // Background: warm cream gradient
-    context.saveGState()
-    context.addPath(squircle)
-    context.clip()
-    let gradient = CGGradient(
-        colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-        colors: [
-            CGColor(srgbRed: 0.955, green: 0.905, blue: 0.800, alpha: 1),
-            CGColor(srgbRed: 0.860, green: 0.770, blue: 0.610, alpha: 1),
-        ] as CFArray,
-        locations: [0, 1]
-    )!
-    context.drawLinearGradient(
-        gradient,
-        start: CGPoint(x: bg.midX, y: bg.maxY),
-        end: CGPoint(x: bg.midX, y: bg.minY),
-        options: []
+    let bg = NSRect(x: margin, y: margin, width: s - margin * 2, height: s - margin * 2)
+    let unit = bg.width / 160 // design file is authored on a 160pt grid
+    let squircle = NSBezierPath(
+        roundedRect: bg,
+        xRadius: 36 * unit,
+        yRadius: 36 * unit
     )
 
+    paper.setFill()
+    squircle.fill()
+
+    // Paper grain: deterministic speckle field, clipped to the squircle
+    // (stands in for the design's feTurbulence multiply layer).
     var seed: UInt64 = 0x5EED
     func rand() -> CGFloat {
         seed = seed &* 6364136223846793005 &+ 1442695040888963407
         return CGFloat(seed >> 40) / CGFloat(1 << 24)
     }
-
-    // Faint grain across the background
-    for _ in 0..<(pixels * 3) {
+    NSGraphicsContext.current?.saveGraphicsState()
+    squircle.addClip()
+    for _ in 0..<(pixels * 4) {
         let dark = rand() > 0.5
-        context.setFillColor(CGColor(
-            srgbRed: dark ? 0.45 : 1.0, green: dark ? 0.38 : 0.98,
-            blue: dark ? 0.28 : 0.93, alpha: 0.05 + rand() * 0.06
-        ))
+        (dark ? ink : NSColor.white)
+            .withAlphaComponent(0.04 + rand() * 0.07)
+            .setFill()
         let r = max(0.5, s / 512) * (0.5 + rand())
-        context.fillEllipse(in: CGRect(
+        NSBezierPath(ovalIn: NSRect(
             x: bg.minX + rand() * bg.width,
             y: bg.minY + rand() * bg.height,
             width: r, height: r
-        ))
+        )).fill()
     }
-    context.restoreGState()
+    NSGraphicsContext.current?.restoreGraphicsState()
 
-    // Paper sheet, slightly rotated, with shadow and folded top-right corner
-    context.saveGState()
-    context.translateBy(x: s / 2, y: s / 2)
-    context.rotate(by: -4 * .pi / 180)
-    let w = bg.width * 0.60
-    let h = bg.height * 0.70
-    let fold = w * 0.22
-    let sheet = CGRect(x: -w / 2, y: -h / 2, width: w, height: h)
+    // The letterpress "d" — Newsreader in the design; Georgia is the
+    // design's own fallback and ships with macOS.
+    let font = NSFont(name: "Georgia-BoldItalic", size: 122 * unit)
+        ?? NSFont.boldSystemFont(ofSize: 122 * unit)
+    let letter = NSAttributedString(string: "d", attributes: [
+        .font: font,
+        .foregroundColor: ink,
+    ])
+    let size = letter.size()
+    // Centered, then nudged per the design's translate(-8px, -6px)
+    // (CSS -y is upward-in-Cocoa here since we mirror the visual result).
+    letter.draw(at: NSPoint(
+        x: bg.midX - size.width / 2 - 8 * unit,
+        y: bg.midY - size.height / 2 + 6 * unit
+    ))
 
-    let sheetPath = CGMutablePath()
-    sheetPath.move(to: CGPoint(x: sheet.minX, y: sheet.minY))
-    sheetPath.addLine(to: CGPoint(x: sheet.maxX, y: sheet.minY))
-    sheetPath.addLine(to: CGPoint(x: sheet.maxX, y: sheet.maxY - fold))
-    sheetPath.addLine(to: CGPoint(x: sheet.maxX - fold, y: sheet.maxY))
-    sheetPath.addLine(to: CGPoint(x: sheet.minX, y: sheet.maxY))
-    // Deckled left edge — the feathered, irregular edge of handmade paper
-    // that the app is named after.
-    let steps = 18
-    for i in 1...steps {
-        let t = CGFloat(i) / CGFloat(steps)
-        let y = sheet.maxY - t * sheet.height
-        let x = i == steps ? sheet.minX : sheet.minX + (rand() - 0.5) * w * 0.05
-        sheetPath.addLine(to: CGPoint(x: x, y: y))
-    }
-    sheetPath.closeSubpath()
+    // Vermillion dot, lower right (right: 36, bottom: 36, d = 14 on the grid)
+    vermillion.setFill()
+    NSBezierPath(ovalIn: NSRect(
+        x: bg.maxX - (36 + 14) * unit,
+        y: bg.minY + 36 * unit,
+        width: 14 * unit, height: 14 * unit
+    )).fill()
 
-    context.setShadow(
-        offset: CGSize(width: 0, height: -s * 0.015),
-        blur: s * 0.035,
-        color: CGColor(gray: 0, alpha: 0.30)
-    )
-    context.addPath(sheetPath)
-    context.setFillColor(CGColor(srgbRed: 0.995, green: 0.985, blue: 0.965, alpha: 1))
-    context.fillPath()
-    context.setShadow(offset: .zero, blur: 0, color: nil)
-
-    // Grain on the sheet
-    context.saveGState()
-    context.addPath(sheetPath)
-    context.clip()
-    for _ in 0..<(pixels * 4) {
-        let dark = rand() > 0.5
-        context.setFillColor(CGColor(
-            srgbRed: dark ? 0.55 : 1.0, green: dark ? 0.48 : 0.99,
-            blue: dark ? 0.38 : 0.95, alpha: 0.06 + rand() * 0.08
-        ))
-        let r = max(0.5, s / 512) * (0.5 + rand())
-        context.fillEllipse(in: CGRect(
-            x: sheet.minX + rand() * sheet.width,
-            y: sheet.minY + rand() * sheet.height,
-            width: r, height: r
-        ))
-    }
-    context.restoreGState()
-
-    // Suggested text lines
-    let lineColor = CGColor(srgbRed: 0.72, green: 0.65, blue: 0.52, alpha: 0.85)
-    let lineHeight = h * 0.045
-    let pad = w * 0.14
-    let widths: [CGFloat] = [0.48, 0.72, 0.72, 0.72, 0.55]
-    for (i, frac) in widths.enumerated() {
-        let y = sheet.maxY - h * 0.22 - CGFloat(i) * h * 0.13
-        let lineRect = CGRect(
-            x: sheet.minX + pad, y: y,
-            width: (w - pad * 2) * frac, height: lineHeight
-        )
-        context.addPath(CGPath(
-            roundedRect: lineRect,
-            cornerWidth: lineHeight / 2, cornerHeight: lineHeight / 2,
-            transform: nil
-        ))
-        // First line reads as a heading: slightly darker
-        context.setFillColor(i == 0
-            ? CGColor(srgbRed: 0.55, green: 0.47, blue: 0.34, alpha: 0.9)
-            : lineColor)
-        context.fillPath()
-    }
-
-    // Folded corner flap
-    context.move(to: CGPoint(x: sheet.maxX - fold, y: sheet.maxY))
-    context.addLine(to: CGPoint(x: sheet.maxX, y: sheet.maxY - fold))
-    context.addLine(to: CGPoint(x: sheet.maxX - fold, y: sheet.maxY - fold))
-    context.closePath()
-    context.setFillColor(CGColor(srgbRed: 0.88, green: 0.82, blue: 0.71, alpha: 1))
-    context.fillPath()
-
-    context.restoreGState()
-    return context.makeImage()!
+    NSGraphicsContext.restoreGraphicsState()
+    return rep
 }
 
-func writePNG(_ image: CGImage, to path: String) {
-    let rep = NSBitmapImageRep(cgImage: image)
+func writePNG(_ rep: NSBitmapImageRep, to path: String) {
     let data = rep.representation(using: .png, properties: [:])!
     try! data.write(to: URL(fileURLWithPath: path))
 }
