@@ -91,10 +91,19 @@ final class UpdateManager: ObservableObject {
     }
 
     func installLatest() {
-        // Self-replace only makes sense for a bundle installed as
-        // <something>/Deckle.app; otherwise send the user to the release.
         let target = Bundle.main.bundleURL
-        guard let dmg = downloadURL, target.pathExtension == "app" else {
+
+        // In-place replacement only works when Deckle is a normal .app whose
+        // enclosing folder we can write to. It can't when the app is running
+        // "translocated" (Gatekeeper's read-only randomized path, used the
+        // first time an unsigned app is opened from a DMG or Downloads) — the
+        // real install location is then unknown, so hand off to the browser.
+        let installDir = target.deletingLastPathComponent()
+        let canSelfReplace = target.pathExtension == "app"
+            && !target.path.contains("/AppTranslocation/")
+            && FileManager.default.isWritableFile(atPath: installDir.path)
+
+        guard let dmg = downloadURL, canSelfReplace else {
             NSWorkspace.shared.open(releasesPage)
             return
         }
@@ -137,14 +146,25 @@ final class UpdateManager: ObservableObject {
             throw UpdateError.badArchive
         }
 
-        // Stage on the destination volume, then swap — the running binary's
-        // mapped pages stay valid even after its bundle is replaced.
-        let staging = target.deletingLastPathComponent()
-            .appendingPathComponent("Deckle.app.update")
-        try? FileManager.default.removeItem(at: staging)
+        // Stage a full copy on the destination volume, then swap it in with a
+        // single atomic replace. ditto to a uniquely-named sibling avoids
+        // colliding with any leftover from an interrupted attempt; the
+        // running binary's mapped pages stay valid after its bundle is
+        // replaced (the old inode lives until this process exits).
+        let installDir = target.deletingLastPathComponent()
+        let staging = installDir.appendingPathComponent("Deckle.app.update-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: staging) }
         try run("/usr/bin/ditto", newApp.path, staging.path)
-        try FileManager.default.removeItem(at: target)
-        try FileManager.default.moveItem(at: staging, to: target)
+
+        // The DMG-mounted copy carries no quarantine, but clear it defensively
+        // so the swapped-in bundle never triggers a Gatekeeper prompt.
+        try? run("/usr/bin/xattr", "-dr", "com.apple.quarantine", staging.path)
+
+        // replaceItemAt is atomic on a single volume: no window where the app
+        // is half-removed, and it fails cleanly (leaving the original intact)
+        // instead of the previous remove-then-move, which could delete the
+        // app and then fail to move the replacement in.
+        _ = try FileManager.default.replaceItemAt(target, withItemAt: staging)
     }
 
     private func relaunch(_ target: URL) {
@@ -156,15 +176,26 @@ final class UpdateManager: ObservableObject {
         NSApp.terminate(nil)
     }
 
-    private func run(_ launchPath: String, _ arguments: String...) throws {
+    @discardableResult
+    private func run(_ launchPath: String, _ arguments: String...) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: launchPath)
         process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
         try process.run()
+        let output = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
+        let text = String(data: output, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard process.terminationStatus == 0 else {
-            throw UpdateError.toolFailed(launchPath)
+            NSLog("[Deckle updater] \(launchPath) exit \(process.terminationStatus): \(text)")
+            throw UpdateError.toolFailed(
+                "\((launchPath as NSString).lastPathComponent): \(text.isEmpty ? "exit \(process.terminationStatus)" : text)"
+            )
         }
+        return text
     }
 
     private func isNewer(_ a: String, than b: String) -> Bool {
@@ -185,7 +216,7 @@ final class UpdateManager: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .badArchive: return "Update download looked wrong; not installing"
-            case .toolFailed(let tool): return "\(tool) failed"
+            case .toolFailed(let detail): return "Update failed — \(detail)"
             }
         }
     }
