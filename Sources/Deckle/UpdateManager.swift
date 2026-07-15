@@ -70,8 +70,16 @@ final class UpdateManager: ObservableObject {
                 status = userInitiated ? .upToDate : .idle
                 return
             }
+            // Only ever download release assets of this repo over HTTPS —
+            // never a URL the API response could have been tampered into.
             downloadURL = release.assets.first { $0.name.hasSuffix(".dmg") }
                 .flatMap { URL(string: $0.browserDownloadUrl) }
+                .flatMap { url in
+                    url.scheme == "https"
+                        && url.host == "github.com"
+                        && url.path.hasPrefix("/YellowFoxH4XOR/deckle/releases/download/")
+                        ? url : nil
+                }
             status = .available(latest)
             if autoInstall {
                 installLatest()
@@ -114,6 +122,18 @@ final class UpdateManager: ObservableObject {
 
         let newApp = mount.appendingPathComponent("Deckle.app")
         guard FileManager.default.fileExists(atPath: newApp.path) else {
+            throw UpdateError.badArchive
+        }
+
+        // Integrity gate before the swap: the code signature seal must
+        // verify and the payload must actually be Deckle. Releases are
+        // ad-hoc signed, so this proves the bundle is intact, not who built
+        // it — origin trust comes from the pinned HTTPS release URL above.
+        // (If Deckle adopts Developer ID signing, tighten this with
+        // `-R="anchor apple generic and certificate leaf[subject.OU] = <team>"`.)
+        try run("/usr/bin/codesign", "--verify", "--deep", "--strict", newApp.path)
+        let newInfo = NSDictionary(contentsOf: newApp.appendingPathComponent("Contents/Info.plist"))
+        guard newInfo?["CFBundleIdentifier"] as? String == Bundle.main.bundleIdentifier else {
             throw UpdateError.badArchive
         }
 
