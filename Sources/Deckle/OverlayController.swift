@@ -39,17 +39,26 @@ final class OverlayController {
             let excluded = state.excludedDisplays.contains(String(displayID))
             let visible = state.shouldShowOverlay && !excluded
 
+            // .none removes the overlay from screenshots/recordings while it
+            // stays visible on the physical display. Changing sharingType on
+            // an onscreen window doesn't reliably reach the window server, so
+            // it is only ever set before a window first orders front — when
+            // the setting changes, the window is rebuilt.
+            let sharing: NSWindow.SharingType = state.hideFromCapture ? .none : .readOnly
+            if let existing = windows[displayID], existing.sharingType != sharing {
+                existing.orderOut(nil)
+                windows.removeValue(forKey: displayID)
+            }
+
             let window = windows[displayID] ?? {
                 let created = OverlayWindow(screen: screen)
+                created.sharingType = sharing
                 windows[displayID] = created
                 return created
             }()
 
             window.setFrame(screen.frame, display: true)
             window.apply(texture: state.texture)
-            // .none removes the overlay from screenshots/recordings while it
-            // stays visible on the physical display.
-            window.sharingType = state.hideFromCapture ? .none : .readOnly
 
             if visible {
                 if window.isVisible {
