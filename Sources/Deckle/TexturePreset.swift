@@ -36,7 +36,20 @@ struct TexturePreset: Identifiable, Equatable {
     let isDark: Bool
 
     static func == (lhs: TexturePreset, rhs: TexturePreset) -> Bool {
-        lhs.id == rhs.id
+        lhs.cacheSignature == rhs.cacheSignature
+    }
+
+    /// Cache key that changes when any render-relevant parameter changes.
+    /// Built-ins are immutable so this is effectively their id; custom papers
+    /// reuse their id across edits, so parameters must participate.
+    var cacheSignature: String {
+        var signature = "\(id)|\(tintAlpha)|\(darkStrength)|\(lightStrength)"
+        if let tint = tint.usingColorSpace(.sRGB) {
+            signature += String(format: "|%.3f,%.3f,%.3f", tint.redComponent, tint.greenComponent, tint.blueComponent)
+        }
+        signature += "|" + octaves.map { "\($0.cell):\($0.weight)" }.joined(separator: ",")
+        if let weave { signature += "|w\(weave.period):\(weave.amplitude)" }
+        return signature
     }
 
     static func preset(id: String) -> TexturePreset {

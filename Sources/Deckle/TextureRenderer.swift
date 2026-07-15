@@ -29,7 +29,7 @@ enum TextureRenderer {
         for preset: TexturePreset,
         adjustments: GrainAdjustments = .none
     ) -> NSImage {
-        if adjustments == .none, let cached = tileCache[preset.id] { return cached }
+        if adjustments == .none, let cached = tileCache[preset.cacheSignature] { return cached }
 
         let pixelSize = 256
         let noise = fractalNoise(size: pixelSize, preset: preset, adjustments: adjustments)
@@ -78,7 +78,7 @@ enum TextureRenderer {
             )
         }
 
-        if adjustments == .none { tileCache[preset.id] = image }
+        if adjustments == .none { tileCache[preset.cacheSignature] = image }
         return image
     }
 
@@ -90,7 +90,7 @@ enum TextureRenderer {
         for preset: TexturePreset,
         adjustments: GrainAdjustments = .none
     ) -> NSImage {
-        let key = "\(preset.id)-\(adjustments.cacheKey)"
+        let key = "\(preset.cacheSignature)-\(adjustments.cacheKey)"
         if let cached = compositeCache[preset.id], cached.key == key {
             return cached.image
         }
@@ -109,9 +109,9 @@ enum TextureRenderer {
 
     /// Swatch used in the menu texture picker: the texture drawn over a plain
     /// background, boosted so it is recognizable at thumbnail size.
-    static func preview(for preset: TexturePreset, size: CGSize) -> NSImage {
-        let key = "\(preset.id)-\(Int(size.width))x\(Int(size.height))"
-        if let cached = previewCache[key] { return cached }
+    static func preview(for preset: TexturePreset, size: CGSize, cached: Bool = true) -> NSImage {
+        let key = "\(preset.cacheSignature)-\(Int(size.width))x\(Int(size.height))"
+        if cached, let hit = previewCache[key] { return hit }
 
         let patternTile = tile(for: preset)
         let backdrop: NSColor = preset.isDark
@@ -128,7 +128,7 @@ enum TextureRenderer {
             rect.fill(using: .sourceOver)
             return true
         }
-        previewCache[key] = image
+        if cached { previewCache[key] = image }
         return image
     }
 

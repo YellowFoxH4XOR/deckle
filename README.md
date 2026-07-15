@@ -27,6 +27,9 @@ Not a blue-light filter — a *matte texture* overlay. The grain breaks up the p
 - **Intensity slider** (5–45%), plus **grain controls** — size (Fine → Grainy) and strength, applied to any texture
 - **Global hotkey** — ⌥⌘P toggles the texture from any app
 - **In-app updates** — checks GitHub Releases daily; one-click update, or turn on automatic installs
+- **Paper Mill** — blend your own paper (tint, wash, weave, blotch) and save it; export as JSON, import others', or install shared recipes from the [community papers repo](https://github.com/YellowFoxH4XOR/deckle-papers)
+- **Per-app rules** — hide the paper in chosen apps ("Except…") or show it only in chosen apps ("Only…")
+- **Automation** — `deckle://` URL commands work from Shortcuts, Raycast, Alfred, cron, or Terminal
 - **Capture privacy** — optionally hide the texture from screenshots and screen recordings while it stays visible to you
 - **Snooze** for 15 min / 30 min / 1 h — auto-resumes
 - **Multi-monitor support** with per-display on/off
@@ -65,6 +68,21 @@ Or `make run` to try it from `dist/` without installing. Look for the paper-shee
 - One borderless, transparent `NSWindow` per display at `.screenSaver` window level (above the menu bar), with `ignoresMouseEvents = true` so all input passes through.
 - The paper grain replicates SVG's `feTurbulence type="fractalNoise" baseFrequency="1.5" numOctaves="3"`: several octaves of seamlessly tileable value noise are summed, then mapped to translucent dark/light speckles. One 256×256 tile is generated per texture and tiled across the screen by the CoreAnimation render server, so memory stays flat no matter the resolution.
 - The intensity slider just drives the overlay window's `alphaValue` — the texture itself is rendered once and cached.
+- **Energy design:** the overlay is retained-mode — after setup, Deckle renders nothing per frame and idles at ~0 wakeups. Scheduled work (update checks) uses `NSBackgroundActivityScheduler` so macOS coalesces wakeups, and slider drags are throttled to ~30 regenerations/second. ~18 MB physical footprint regardless of display count.
+
+## Automation
+
+Anything that can open a URL can drive Deckle — Shortcuts' "Open URL" action, `open` in Terminal, Raycast, Alfred, cron:
+
+```
+deckle://on | off | toggle
+deckle://snooze?minutes=30      deckle://resume
+deckle://texture?name=Ink%20Stone
+deckle://intensity?percent=25
+deckle://grain?size=2&strength=1.2
+```
+
+Examples: a Shortcuts personal automation "At sunset → Open URL `deckle://on`" gives you circadian scheduling; "When Work Focus turns on → `deckle://texture?name=Soft%20Wove`" pairs papers with contexts.
 
 ## Development
 
@@ -78,8 +96,8 @@ No dependencies; pure Swift + AppKit + SwiftUI.
 
 ## Roadmap
 
-- Circadian scheduling (auto-enable at sunset)
-- Per-app exclusions
+- Battery auto-disable & Low Power Mode awareness
+- Built-in sunset scheduling (today: use a Shortcuts automation with `deckle://on`)
 
 ## License
 

@@ -8,15 +8,30 @@ final class OverlayController {
 
     private var windows: [CGDirectDisplayID: OverlayWindow] = [:]
     private var cancellables: Set<AnyCancellable> = []
+    private var frontmostBundleID: String?
 
     private init() {}
 
+    private var refreshScheduled = false
+
+    /// Coalesces refresh bursts (e.g. every tick of a slider drag) into at
+    /// most ~30 refreshes/second — regenerating the grain tile on every
+    /// mouse-move event is the app's only real CPU burst.
+    private func scheduleRefresh() {
+        guard !refreshScheduled else { return }
+        refreshScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.033) { [weak self] in
+            self?.refreshScheduled = false
+            self?.refresh()
+        }
+    }
+
     func start() {
-        // objectWillChange fires before the mutation lands, so hop to the
-        // next runloop tick to read the updated values.
+        // objectWillChange fires before the mutation lands; the coalescing
+        // delay also guarantees we read post-mutation values.
         AppState.shared.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.refresh() }
+            .sink { [weak self] _ in self?.scheduleRefresh() }
             .store(in: &cancellables)
 
         NotificationCenter.default.addObserver(
@@ -24,6 +39,20 @@ final class OverlayController {
             object: nil,
             queue: .main
         ) { [weak self] _ in self?.refresh() }
+
+        // Event-driven per-app rules: no polling, we only hear about
+        // activations. The listener is always on (cheap) so switching the
+        // rule mode takes effect without restructuring observers.
+        frontmostBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            self?.frontmostBundleID = app?.bundleIdentifier
+            self?.refresh()
+        }
 
         refresh()
     }
@@ -37,7 +66,9 @@ final class OverlayController {
             seen.insert(displayID)
 
             let excluded = state.excludedDisplays.contains(String(displayID))
-            let visible = state.shouldShowOverlay && !excluded
+            let visible = state.shouldShowOverlay
+                && !excluded
+                && state.appRuleAllows(frontmost: frontmostBundleID)
 
             // .none removes the overlay from screenshots/recordings while it
             // stays visible on the physical display. Changing sharingType on

@@ -49,7 +49,66 @@ final class AppState: ObservableObject {
         .init(scale: grainScale, strength: grainStrength)
     }
 
-    var texture: TexturePreset { TexturePreset.preset(id: textureID) }
+    // MARK: App rules
+
+    enum AppRuleMode: String, CaseIterable {
+        case everywhere, except, only
+    }
+
+    struct RuleApp: Codable, Equatable, Identifiable {
+        var bundleID: String
+        var name: String
+        var id: String { bundleID }
+    }
+
+    /// Whether the overlay shows everywhere, everywhere except listed apps,
+    /// or only while a listed app is frontmost.
+    @Published var appRuleMode: AppRuleMode {
+        didSet { defaults.set(appRuleMode.rawValue, forKey: Keys.appRuleMode) }
+    }
+
+    @Published var ruleApps: [RuleApp] {
+        didSet {
+            if let data = try? JSONEncoder().encode(ruleApps) {
+                defaults.set(data, forKey: Keys.ruleApps)
+            }
+        }
+    }
+
+    /// Visibility verdict for the given frontmost app. Deckle itself is
+    /// always allowed so the overlay stays visible while using our own UI.
+    func appRuleAllows(frontmost bundleID: String?) -> Bool {
+        guard appRuleMode != .everywhere else { return true }
+        guard let bundleID, bundleID != Bundle.main.bundleIdentifier else { return true }
+        let listed = ruleApps.contains { $0.bundleID == bundleID }
+        switch appRuleMode {
+        case .everywhere: return true
+        case .except: return !listed
+        case .only: return listed
+        }
+    }
+
+    /// User-created papers, editable in the Paper Mill.
+    @Published var customPapers: [CustomPaper] {
+        didSet {
+            if let data = try? JSONEncoder().encode(customPapers) {
+                defaults.set(data, forKey: Keys.customPapers)
+            }
+            // If the active paper was deleted, fall back to the default.
+            if !customPapers.contains(where: { $0.id == textureID }),
+               textureID.hasPrefix("custom-"),
+               TexturePreset.all.first(where: { $0.id == textureID }) == nil {
+                textureID = TexturePreset.all[0].id
+            }
+        }
+    }
+
+    var texture: TexturePreset {
+        if let custom = customPapers.first(where: { $0.id == textureID }) {
+            return TexturePreset(custom: custom)
+        }
+        return TexturePreset.preset(id: textureID)
+    }
 
     var isSnoozed: Bool {
         guard let until = snoozeUntil else { return false }
@@ -76,6 +135,9 @@ final class AppState: ObservableObject {
         static let hideFromCapture = "hideFromCapture"
         static let grainScale = "grainScale"
         static let grainStrength = "grainStrength"
+        static let appRuleMode = "appRuleMode"
+        static let ruleApps = "ruleApps"
+        static let customPapers = "customPapers"
     }
 
     private let defaults = UserDefaults.standard
@@ -89,6 +151,11 @@ final class AppState: ObservableObject {
         hideFromCapture = defaults.bool(forKey: Keys.hideFromCapture)
         grainScale = defaults.object(forKey: Keys.grainScale) as? Double ?? 1.0
         grainStrength = defaults.object(forKey: Keys.grainStrength) as? Double ?? 1.0
+        appRuleMode = AppRuleMode(rawValue: defaults.string(forKey: Keys.appRuleMode) ?? "") ?? .everywhere
+        ruleApps = defaults.data(forKey: Keys.ruleApps)
+            .flatMap { try? JSONDecoder().decode([RuleApp].self, from: $0) } ?? []
+        customPapers = defaults.data(forKey: Keys.customPapers)
+            .flatMap { try? JSONDecoder().decode([CustomPaper].self, from: $0) } ?? []
     }
 
     private func scheduleSnoozeExpiry() {
@@ -101,5 +168,8 @@ final class AppState: ObservableObject {
         ) { [weak self] _ in
             self?.snoozeUntil = nil
         }
+        // A snooze ending seconds late is invisible; a coalesced CPU wakeup
+        // is real battery savings.
+        snoozeTimer?.tolerance = min(60, until.timeIntervalSinceNow * 0.1)
     }
 }
