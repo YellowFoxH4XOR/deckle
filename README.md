@@ -22,7 +22,20 @@ Not a blue-light filter — a *matte texture* overlay. The grain breaks up the p
 
 ## Install
 
-Build from source (requires Xcode command line tools, macOS 13+):
+### Homebrew
+
+```sh
+brew tap yellowfoxh4xor/tap
+brew install --cask deckle
+```
+
+### Download
+
+Grab the DMG from the [latest release](https://github.com/YellowFoxH4XOR/deckle/releases/latest), open it, and drag Deckle into Applications. Deckle isn't notarized (it's a free open-source app) — if macOS blocks the first launch, right-click Deckle.app and choose Open.
+
+### Build from source
+
+Requires Xcode command line tools, macOS 13+:
 
 ```sh
 git clone https://github.com/<you>/deckle.git

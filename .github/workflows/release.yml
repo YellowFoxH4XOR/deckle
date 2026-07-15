@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build universal DMG
+        run: make dmg UNIVERSAL=1
+
+      - name: Checksum
+        run: |
+          cd dist
+          shasum -a 256 Deckle-*.dmg | tee Deckle.dmg.sha256
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Deckle-*.dmg
+            dist/Deckle.dmg.sha256
+          generate_release_notes: true

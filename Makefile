@@ -1,12 +1,21 @@
 APP_NAME = Deckle
 BUNDLE   = dist/$(APP_NAME).app
-BINARY   = .build/release/$(APP_NAME)
 INSTALL  = /Applications/$(APP_NAME).app
+VERSION  = $(shell /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Support/Info.plist)
 
-.PHONY: build app run install clean
+# UNIVERSAL=1 builds a fat arm64+x86_64 binary (used by release CI).
+ifdef UNIVERSAL
+SWIFT_FLAGS = --arch arm64 --arch x86_64
+BINARY      = .build/apple/Products/Release/$(APP_NAME)
+else
+SWIFT_FLAGS =
+BINARY      = .build/release/$(APP_NAME)
+endif
+
+.PHONY: build app run install dmg clean
 
 build:
-	swift build -c release
+	swift build -c release $(SWIFT_FLAGS)
 
 build/AppIcon.icns: scripts/GenerateIcon.swift
 	mkdir -p build
@@ -31,6 +40,15 @@ install: app
 	touch $(INSTALL)
 	open $(INSTALL)
 	@echo "Installed and launched $(INSTALL)"
+
+dmg: app
+	rm -rf dist/dmg dist/$(APP_NAME)-$(VERSION).dmg
+	mkdir -p dist/dmg
+	cp -R $(BUNDLE) dist/dmg/
+	ln -s /Applications dist/dmg/Applications
+	hdiutil create -volname "$(APP_NAME)" -srcfolder dist/dmg -ov -format UDZO dist/$(APP_NAME)-$(VERSION).dmg
+	rm -rf dist/dmg
+	@echo "Built dist/$(APP_NAME)-$(VERSION).dmg"
 
 clean:
 	rm -rf .build build dist
