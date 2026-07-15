@@ -50,8 +50,8 @@ struct TexturePreset: Identifiable, Equatable {
         // MARK: Light papers
         TexturePreset(
             id: "classic-matte",
-            name: "Classic Matte",
-            subtitle: "Smooth, diffused finish",
+            name: "Soft Wove",
+            subtitle: "Smooth, even-milled finish",
             tint: NSColor(srgbRed: 0.98, green: 0.96, blue: 0.92, alpha: 1),
             tintAlpha: 0.35,
             darkColor: NSColor(srgbRed: 0.25, green: 0.22, blue: 0.18, alpha: 1),
@@ -78,8 +78,8 @@ struct TexturePreset: Identifiable, Equatable {
         ),
         TexturePreset(
             id: "whisper-weave",
-            name: "Whisper Weave",
-            subtitle: "Delicate fabric texture",
+            name: "Laid Cotton",
+            subtitle: "Fine ribbed cotton sheet",
             tint: NSColor(srgbRed: 0.97, green: 0.95, blue: 0.93, alpha: 1),
             tintAlpha: 0.32,
             darkColor: NSColor(srgbRed: 0.28, green: 0.25, blue: 0.22, alpha: 1),
@@ -106,8 +106,8 @@ struct TexturePreset: Identifiable, Equatable {
         ),
         TexturePreset(
             id: "painters-press",
-            name: "Painter's Press",
-            subtitle: "Cold-press surface",
+            name: "Cold Press",
+            subtitle: "Rough watercolor stock",
             tint: NSColor(srgbRed: 0.96, green: 0.95, blue: 0.92, alpha: 1),
             tintAlpha: 0.35,
             darkColor: NSColor(srgbRed: 0.30, green: 0.28, blue: 0.25, alpha: 1),
@@ -135,8 +135,8 @@ struct TexturePreset: Identifiable, Equatable {
         // MARK: Warm tones
         TexturePreset(
             id: "sunbaked-parchment",
-            name: "Sunbaked Parchment",
-            subtitle: "Amber-toned grain",
+            name: "Foxed Amber",
+            subtitle: "Age-warmed amber grain",
             tint: NSColor(srgbRed: 0.93, green: 0.82, blue: 0.60, alpha: 1),
             tintAlpha: 0.48,
             darkColor: NSColor(srgbRed: 0.36, green: 0.26, blue: 0.10, alpha: 1),
@@ -149,8 +149,8 @@ struct TexturePreset: Identifiable, Equatable {
         ),
         TexturePreset(
             id: "saddle-linen",
-            name: "Saddle Linen",
-            subtitle: "Natural weave",
+            name: "Bookcloth",
+            subtitle: "Binder's linen weave",
             tint: NSColor(srgbRed: 0.88, green: 0.80, blue: 0.68, alpha: 1),
             tintAlpha: 0.45,
             darkColor: NSColor(srgbRed: 0.30, green: 0.24, blue: 0.16, alpha: 1),
@@ -178,8 +178,8 @@ struct TexturePreset: Identifiable, Equatable {
         // MARK: Tinted
         TexturePreset(
             id: "mulberry-veil",
-            name: "Mulberry Veil",
-            subtitle: "Plum-toned, translucent",
+            name: "Plum Kozo",
+            subtitle: "Plum-washed kozo fibre",
             tint: NSColor(srgbRed: 0.85, green: 0.78, blue: 0.86, alpha: 1),
             tintAlpha: 0.42,
             darkColor: NSColor(srgbRed: 0.30, green: 0.20, blue: 0.30, alpha: 1),
@@ -234,8 +234,8 @@ struct TexturePreset: Identifiable, Equatable {
         ),
         TexturePreset(
             id: "vellum-mist",
-            name: "Vellum Mist",
-            subtitle: "Frosted effect",
+            name: "Frost Glassine",
+            subtitle: "Translucent frosted haze",
             tint: NSColor(srgbRed: 0.97, green: 0.97, blue: 0.98, alpha: 1),
             tintAlpha: 0.50,
             darkColor: NSColor(srgbRed: 0.45, green: 0.45, blue: 0.48, alpha: 1),
@@ -248,8 +248,8 @@ struct TexturePreset: Identifiable, Equatable {
         ),
         TexturePreset(
             id: "monastic-felt",
-            name: "Monastic Felt",
-            subtitle: "Soft, muted wool",
+            name: "Felt Side",
+            subtitle: "The sheet's soft felt side",
             tint: NSColor(srgbRed: 0.85, green: 0.86, blue: 0.82, alpha: 1),
             tintAlpha: 0.45,
             darkColor: NSColor(srgbRed: 0.28, green: 0.30, blue: 0.26, alpha: 1),
@@ -263,8 +263,8 @@ struct TexturePreset: Identifiable, Equatable {
         // MARK: Dark
         TexturePreset(
             id: "carbon-ledger",
-            name: "Carbon Ledger",
-            subtitle: "Deep graphite",
+            name: "Ink Stone",
+            subtitle: "Ground-ink black",
             tint: NSColor(srgbRed: 0.12, green: 0.12, blue: 0.13, alpha: 1),
             tintAlpha: 0.38,
             darkColor: NSColor(srgbRed: 0.02, green: 0.02, blue: 0.03, alpha: 1),

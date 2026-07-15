@@ -21,9 +21,9 @@ Not a blue-light filter — a *matte texture* overlay. The grain breaks up the p
 <img src="docs/menu.png" width="300" align="right" alt="Deckle's menu: texture picker, intensity slider, snooze, and settings">
 
 - **18 paper textures** in three families:
-  - *Papers* — Classic Matte, Rice Paper, Whisper Weave, Newsprint, Painter's Press, Artist Canvas, Monastic Felt, Vellum Mist
-  - *Warm & tinted* — Sunbaked Parchment, Saddle Linen, Recycled Kraft, Mulberry Veil, Rose Quartz, Sage Press, Nordic Sky
-  - *Dark* — Carbon Ledger, Midnight Slate, Espresso
+  - *Papers* — Soft Wove, Rice Paper, Laid Cotton, Newsprint, Cold Press, Artist Canvas, Felt Side, Frost Glassine
+  - *Warm & tinted* — Foxed Amber, Bookcloth, Recycled Kraft, Plum Kozo, Rose Quartz, Sage Press, Nordic Sky
+  - *Dark* — Ink Stone, Midnight Slate, Espresso
 - **Intensity slider** (5–45%)
 - **Global hotkey** — ⌥⌘P toggles the texture from any app
 - **In-app updates** — checks GitHub Releases daily; one-click update, or turn on automatic installs
