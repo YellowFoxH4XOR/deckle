@@ -14,6 +14,7 @@ Not a blue-light filter — a *matte texture* overlay. The grain breaks up the p
   - *Dark* — Carbon Ledger, Midnight Slate, Espresso
 - **Intensity slider** (5–45%)
 - **Global hotkey** — ⌥⌘P toggles the texture from any app
+- **In-app updates** — checks GitHub Releases daily; one-click update, or turn on automatic installs
 - **Snooze** for 15 min / 30 min / 1 h — auto-resumes
 - **Multi-monitor support** with per-display on/off
 - **Launch at login**

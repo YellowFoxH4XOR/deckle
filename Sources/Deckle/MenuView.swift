@@ -5,6 +5,7 @@ import ServiceManagement
 /// sectioned texture picker, snooze controls, per-display toggles, footer.
 struct MenuView: View {
     @EnvironmentObject private var state: AppState
+    @ObservedObject private var updater = UpdateManager.shared
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     private var isBundled: Bool {
@@ -161,6 +162,7 @@ struct MenuView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
+            updateRow
             HStack {
                 Toggle("Launch at login", isOn: launchAtLoginBinding)
                     .toggleStyle(.checkbox)
@@ -172,9 +174,56 @@ struct MenuView: View {
                     .controlSize(.small)
                     .keyboardShortcut("q")
             }
-            Text("⌥⌘P toggles the texture from anywhere")
+            HStack {
+                Toggle("Install updates automatically", isOn: $updater.autoInstall)
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                Spacer()
+                Button("Check now") {
+                    Task { await updater.check(userInitiated: true) }
+                }
+                .controlSize(.small)
+                .disabled(updater.status == .checking || updater.status == .installing)
+            }
+            Text("v\(updater.currentVersion) · ⌥⌘P toggles the texture from anywhere")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+        }
+    }
+
+    @ViewBuilder
+    private var updateRow: some View {
+        switch updater.status {
+        case .available(let version):
+            HStack {
+                Text("Deckle \(version) is available")
+                    .font(.caption)
+                Spacer()
+                Button("Update") { updater.installLatest() }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+            }
+        case .installing:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Installing update — Deckle will relaunch…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .checking:
+            Text("Checking for updates…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .upToDate:
+            Text("You're on the latest version")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .failed(let message):
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .idle:
+            EmptyView()
         }
     }
 
