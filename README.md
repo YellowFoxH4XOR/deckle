@@ -26,6 +26,7 @@ Not a blue-light filter — a *matte texture* overlay. The grain breaks up the p
 
 ```sh
 brew tap yellowfoxh4xor/tap
+brew trust yellowfoxh4xor/tap   # Homebrew 6+ asks once for third-party taps
 brew install --cask deckle
 ```
 
