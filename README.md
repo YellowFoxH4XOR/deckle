@@ -32,7 +32,15 @@ brew install --cask deckle
 
 ### Download
 
-Grab the DMG from the [latest release](https://github.com/YellowFoxH4XOR/deckle/releases/latest), open it, and drag Deckle into Applications. Deckle isn't notarized (it's a free open-source app) — if macOS blocks the first launch, right-click Deckle.app and choose Open.
+Grab the DMG from the [latest release](https://github.com/YellowFoxH4XOR/deckle/releases/latest), open it, and drag Deckle into Applications.
+
+> [!NOTE]
+> Deckle isn't notarized (it's a free open-source app), so macOS will block the first launch with *"Apple could not verify Deckle is free of malware."* To allow it:
+> 1. Click **Done** (not "Move to Bin")
+> 2. Open **System Settings → Privacy & Security**, scroll to the Security section
+> 3. Next to *"Deckle" was blocked to protect your Mac*, click **Open Anyway** and confirm
+>
+> This is needed once. Alternatively: `xattr -dr com.apple.quarantine /Applications/Deckle.app`, or install via Homebrew with `--no-quarantine`.
 
 ### Build from source
 
