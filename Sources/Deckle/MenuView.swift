@@ -339,9 +339,14 @@ struct MenuView: View {
                 .controlSize(.small)
                 .disabled(updater.status == .checking || updater.status == .installing)
             }
-            Text("v\(updater.currentVersion) · ⌥⌘P toggles the texture from anywhere")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            HStack {
+                Text("v\(updater.currentVersion) · ⌥⌘P toggles the texture from anywhere")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Link("★ GitHub", destination: URL(string: "https://github.com/YellowFoxH4XOR/deckle")!)
+                    .font(.caption2)
+            }
         }
     }
 
