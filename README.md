@@ -12,6 +12,8 @@ A free, open-source macOS menu bar app that lays a subtle **paper-grain texture 
 
 ![Deckle toggling its paper texture over a web page](docs/deckle-demo.gif)
 
+> If Deckle makes your screen nicer, [a star](https://github.com/YellowFoxH4XOR/deckle) helps other people find it ⭐
+
 *A deckle is the wooden frame used in hand papermaking — it leaves behind the soft, feathered "deckle edge" that marks real handmade paper.*
 
 Not a blue-light filter — a *matte texture* overlay. The grain breaks up the perfectly uniform backlight glow that makes screens feel harsh, while every pixel of your work stays interactive: the overlay is fully click-through.
@@ -98,6 +100,10 @@ No dependencies; pure Swift + AppKit + SwiftUI.
 
 - Battery auto-disable & Low Power Mode awareness
 - Built-in sunset scheduling (today: use a Shortcuts automation with `deckle://on`)
+
+## Contributing
+
+The easiest PR: [share a paper recipe](https://github.com/YellowFoxH4XOR/deckle-papers) — 10 lines of JSON, no Swift needed. For code, see [CONTRIBUTING.md](CONTRIBUTING.md) and the [good first issues](https://github.com/YellowFoxH4XOR/deckle/labels/good%20first%20issue). Questions and ideas → [Discussions](https://github.com/YellowFoxH4XOR/deckle/discussions).
 
 ## License
 
