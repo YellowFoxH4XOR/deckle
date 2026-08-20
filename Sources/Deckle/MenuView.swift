@@ -17,7 +17,11 @@ struct MenuView: View {
             header
             intensitySection
             Divider()
+            pinnedFavoritesSection
+            Divider()
             textureSections
+            Divider()
+            deskLampSection
             Divider()
             grainSection
             Divider()
@@ -43,9 +47,29 @@ struct MenuView: View {
 
     private var header: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Deckle")
-                    .font(.headline)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("Deckle")
+                        .font(.headline)
+                    if state.enableDeskLamp && state.isEnabled && !state.isSnoozed {
+                        Label("Lamp", systemImage: "lamp.desk.fill")
+                            .font(.caption2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.amberAccent.opacity(0.2))
+                            .foregroundStyle(Color.amberAccent)
+                            .clipShape(Capsule())
+                    }
+                    if state.isSnoozed {
+                        Label("Snoozed", systemImage: "moon.fill")
+                            .font(.caption2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.2))
+                            .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                    }
+                }
                 Text(statusText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -61,7 +85,7 @@ struct MenuView: View {
     private var intensitySection: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Intensity")
+                Label("Intensity", systemImage: "slider.horizontal.3")
                     .font(.subheadline)
                 Spacer()
                 Text("\(Int(state.intensity * 100))%")
@@ -74,22 +98,63 @@ struct MenuView: View {
         .disabled(!state.isEnabled)
     }
 
+    private var pinnedFavoritesSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("Pinned", systemImage: "pin.fill")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(state.favoriteTextureIDs.count)/6")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            let favorites = state.favoriteTextureIDs.compactMap { id -> TexturePreset? in
+                if let custom = state.customPapers.first(where: { $0.id == id }) {
+                    return TexturePreset(custom: custom)
+                }
+                return TexturePreset.all.first(where: { $0.id == id })
+            }
+            if !favorites.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(favorites) { preset in
+                            CompactFavoritePill(
+                                preset: preset,
+                                isSelected: preset.id == state.textureID
+                            ) {
+                                state.textureID = preset.id
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            } else {
+                Text("Hover over any paper swatch below and click ★ to pin it here.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .disabled(!state.isEnabled)
+    }
+
     private var textureSections: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                textureGroup(title: "Papers", presets: TexturePreset.light)
-                textureGroup(title: "Dark", presets: TexturePreset.dark)
+                textureGroup(title: "Papers", icon: "doc.on.doc", presets: TexturePreset.light)
+                textureGroup(title: "Dark", icon: "moon.fill", presets: TexturePreset.dark)
                 myPapersGroup
             }
             .padding(.vertical, 2)
         }
-        .frame(height: 264)
+        .frame(height: 250)
     }
 
     private var myPapersGroup: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("My Papers")
+                Label("My Papers", systemImage: "sparkles")
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
@@ -131,9 +196,9 @@ struct MenuView: View {
         }
     }
 
-    private func textureGroup(title: String, presets: [TexturePreset]) -> some View {
+    private func textureGroup(title: String, icon: String, presets: [TexturePreset]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
+            Label(title, systemImage: icon)
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
@@ -153,10 +218,67 @@ struct MenuView: View {
         }
     }
 
+    @State private var deskLampExpanded = false
+
+    private var deskLampSection: some View {
+        DisclosureGroup(isExpanded: $deskLampExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Warmth")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Slider(value: $state.deskLampWarmth, in: 0.0...1.0)
+                    Text("\(Int(state.deskLampWarmth * 100))%")
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, alignment: .trailing)
+                }
+
+                HStack {
+                    Text("Brightness")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Slider(value: $state.deskLampBrightness, in: 0.05...0.45)
+                    Text("\(Int(state.deskLampBrightness * 100))%")
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, alignment: .trailing)
+                }
+
+                HStack {
+                    Text("Position")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Picker("", selection: $state.deskLampPosition) {
+                        ForEach(AppState.LampPosition.allCases) { pos in
+                            Text(pos.rawValue).tag(pos)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                }
+            }
+            .padding(.top, 6)
+        } label: {
+            HStack {
+                Label("Desk Lamp Mode", systemImage: "lamp.desk.fill")
+                    .font(.subheadline)
+                Spacer()
+                Toggle("", isOn: $state.enableDeskLamp)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+        }
+        .disabled(!state.isEnabled)
+    }
+
     private var grainSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Grain")
+                Label("Grain", systemImage: "line.3.horizontal.decrease.circle")
                     .font(.subheadline)
                 Spacer()
                 Picker("", selection: $state.grainScale) {
@@ -188,7 +310,7 @@ struct MenuView: View {
         VStack(alignment: .leading, spacing: 6) {
             if state.isSnoozed, let until = state.snoozeUntil {
                 HStack {
-                    Text("Snoozed for ")
+                    Label("Snoozed for ", systemImage: "moon.fill")
                         .font(.subheadline)
                     + Text(timerInterval: Date()...until, countsDown: true)
                         .font(.subheadline)
@@ -199,7 +321,7 @@ struct MenuView: View {
                 }
             } else {
                 HStack {
-                    Text("Snooze")
+                    Label("Snooze", systemImage: "clock")
                         .font(.subheadline)
                     Spacer()
                     ForEach([15, 30, 60], id: \.self) { minutes in
@@ -216,7 +338,7 @@ struct MenuView: View {
 
     private var displaysSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Displays")
+            Label("Displays", systemImage: "display")
                 .font(.subheadline)
             ForEach(NSScreen.screens, id: \.self) { screen in
                 if let displayID = screen.displayID {
@@ -281,7 +403,7 @@ struct MenuView: View {
             .padding(.top, 6)
         } label: {
             HStack(spacing: 6) {
-                Text("App rules")
+                Label("App rules", systemImage: "app.badge")
                     .font(.subheadline)
                 if state.appRuleMode != .everywhere {
                     Text(state.appRuleMode == .except ? "except \(state.ruleApps.count)" : "only \(state.ruleApps.count)")
@@ -405,8 +527,46 @@ struct MenuView: View {
     }
 }
 
-/// One tappable texture thumbnail in the picker grid.
+/// Compact pill view for the Pinned Favorites toolbar.
+private struct CompactFavoritePill: View {
+    let preset: TexturePreset
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(nsImage: TextureRenderer.preview(
+                    for: preset,
+                    size: CGSize(width: 24, height: 24)
+                ))
+                .resizable()
+                .frame(width: 18, height: 18)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
+
+                Text(preset.name)
+                    .font(.caption2)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(isSelected ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.05))
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .help(preset.subtitle)
+    }
+}
+
+/// One tappable texture thumbnail in the picker grid with favorite toggle and checkmark indicator.
 private struct TextureSwatch: View {
+    @EnvironmentObject private var state: AppState
     let preset: TexturePreset
     let isSelected: Bool
     let action: () -> Void
@@ -414,20 +574,47 @@ private struct TextureSwatch: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 4) {
-                Image(nsImage: TextureRenderer.preview(
-                    for: preset,
-                    size: CGSize(width: 88, height: 44)
-                ))
-                .resizable()
-                .aspectRatio(2, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(
-                            isSelected ? Color.accentColor : Color.primary.opacity(0.15),
-                            lineWidth: isSelected ? 2 : 1
-                        )
-                )
+                ZStack(alignment: .topTrailing) {
+                    Image(nsImage: TextureRenderer.preview(
+                        for: preset,
+                        size: CGSize(width: 88, height: 44)
+                    ))
+                    .resizable()
+                    .aspectRatio(2, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(
+                                isSelected ? Color.accentColor : Color.primary.opacity(0.15),
+                                lineWidth: isSelected ? 2 : 1
+                            )
+                    )
+
+                    // Active checkmark badge
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.accentColor, Color.white)
+                            .padding(3)
+                            .alignmentGuide(.top) { d in d[.top] }
+                    }
+
+                    // Star favorite button
+                    Button {
+                        state.toggleFavorite(preset.id)
+                    } label: {
+                        Image(systemName: state.isFavorite(preset.id) ? "star.fill" : "star")
+                            .font(.system(size: 10))
+                            .foregroundStyle(state.isFavorite(preset.id) ? Color.orange : Color.white.opacity(0.8))
+                            .padding(3)
+                            .background(Color.black.opacity(0.3))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(3)
+                    .help(state.isFavorite(preset.id) ? "Unpin from favorites" : "Pin to favorites")
+                }
+
                 Text(preset.name)
                     .font(.caption2)
                     .lineLimit(1)
@@ -438,4 +625,8 @@ private struct TextureSwatch: View {
         .buttonStyle(.plain)
         .help(preset.subtitle)
     }
+}
+
+extension Color {
+    static let amberAccent = Color(red: 0.92, green: 0.62, blue: 0.25)
 }

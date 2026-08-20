@@ -89,7 +89,15 @@ final class OverlayController {
             }()
 
             window.setFrame(screen.frame, display: true)
-            window.apply(texture: state.texture, adjustments: state.grainAdjustments)
+            window.apply(
+                texture: state.texture,
+                adjustments: state.grainAdjustments,
+                deskLampEnabled: state.enableDeskLamp,
+                lampWarmth: state.deskLampWarmth,
+                lampBrightness: state.deskLampBrightness,
+                lampSpread: state.deskLampSpread,
+                lampPosition: state.deskLampPosition
+            )
 
             if visible {
                 if window.isVisible {
