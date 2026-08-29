@@ -103,11 +103,23 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Draft paper the Paper Mill is previewing live on the real overlay
+    /// windows. Deliberately not persisted and not written to `defaults` —
+    /// it only ever lives as long as the editor window.
+    @Published var previewPaper: CustomPaper?
+
     var texture: TexturePreset {
         if let custom = customPapers.first(where: { $0.id == textureID }) {
             return TexturePreset(custom: custom)
         }
         return TexturePreset.preset(id: textureID)
+    }
+
+    /// What the overlay windows should render right now: a live Paper Mill
+    /// draft when one is being previewed, otherwise the selected texture.
+    var effectiveTexture: TexturePreset {
+        if let previewPaper { return TexturePreset(custom: previewPaper) }
+        return texture
     }
 
     var isSnoozed: Bool {
