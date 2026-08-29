@@ -25,10 +25,12 @@ struct FeaturePromoCard: View {
                 title: "Blend custom paper in Paper Mill",
                 description: "Mix custom washes, woven fibers, and organic blotches to make a tactile texture.",
                 action: {
-                    if let onOpenMill {
-                        onOpenMill()
-                    } else {
-                        PaperMill.shared.open()
+                    Task { @MainActor in
+                        if let onOpenMill {
+                            onOpenMill()
+                        } else {
+                            PaperMill.shared.open()
+                        }
                     }
                 }
             ),
@@ -38,7 +40,7 @@ struct FeaturePromoCard: View {
                 iconBackground: Color.blue.opacity(0.12),
                 title: "Explore community papers",
                 description: "Browse and install handcrafted paper textures from the open-source community.",
-                action: { CommunityBrowser.shared.open() }
+                action: { Task { @MainActor in CommunityBrowser.shared.open() } }
             )
         ]
     }
