@@ -8,7 +8,7 @@
 
 **[projects.akshatkatiyar.com/projects/deckle](https://projects.akshatkatiyar.com/projects/deckle/)**
 
-A free, open-source macOS menu bar app that lays a subtle **paper-grain texture over your entire screen**, making long reading and writing sessions feel like paper instead of glass. Inspired by [Paperman](https://paperman.cc/).
+A free, open-source macOS menu bar app that lays a subtle **paper-grain texture over your entire screen**, making long reading and writing sessions feel more like paper than glass. Choose a built-in paper, tune it, or blend and preview your own before saving.
 
 ![Deckle toggling its paper texture over a web page](docs/deckle-demo.gif)
 
@@ -16,28 +16,45 @@ A free, open-source macOS menu bar app that lays a subtle **paper-grain texture 
 
 *A deckle is the wooden frame used in hand papermaking — it leaves behind the soft, feathered "deckle edge" that marks real handmade paper.*
 
-Not a blue-light filter — a *matte texture* overlay. The grain breaks up the perfectly uniform backlight glow that makes screens feel harsh, while every pixel of your work stays interactive: the overlay is fully click-through.
+Not a calibrated blue-light filter — a *matte texture* overlay. The grain breaks up the perfectly uniform backlight glow that makes screens feel harsh, while every pixel of your work stays interactive because the overlay is fully click-through. Paper Mill reports estimated blue-channel reduction and contrast retention as design guidance, not a medical claim.
+
+## At a glance
+
+<table>
+  <tr>
+    <td width="46%" align="center"><img src="docs/menu.png" alt="Deckle's menu-bar popover with live status, intensity, and paper cards" width="360"></td>
+    <td width="54%" align="center"><img src="docs/paper-mill.png" alt="Paper Mill editor with live screen preview and eye-comfort guidance" width="420"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Everything at a glance.</strong><br><sub>Status, intensity, quick controls, and a scrollable paper library.</sub></td>
+    <td align="center"><strong>Preview before you commit.</strong><br><sub>Blend a paper on the real display, inspect its contrast, then create it.</sub></td>
+  </tr>
+</table>
 
 ## Features
 
-<img src="docs/menu.png" width="300" align="right" alt="Deckle's menu: texture picker, intensity slider, snooze, and settings">
-
-- **18 paper textures** in three families:
+- **18 built-in paper textures** in three families:
   - *Papers* — Soft Wove, Rice Paper, Laid Cotton, Newsprint, Cold Press, Artist Canvas, Felt Side, Frost Glassine
   - *Warm & tinted* — Foxed Amber, Bookcloth, Recycled Kraft, Plum Kozo, Rose Quartz, Sage Press, Nordic Sky
   - *Dark* — Ink Stone, Midnight Slate, Espresso
-- **Intensity slider** (5–45%), plus **grain controls** — size (Fine → Grainy) and strength, applied to any texture
+- **Searchable paper library** — search names, descriptions, IDs, and material terms; filter by light, dark, or custom papers; use the edge fade and arrow to browse the compact carousel
+- **Paper Mill with live screen preview** — tune tint, wash, weave, and blotch against your actual desktop before creating or saving the paper
+- **Comfort guidance** — see contrast retention, estimated brightness and blue-channel reduction, tint temperature, pattern load, and four starting recipes: Focus, Reading, Paper, and Night
+- **Paper portability** — export custom papers as JSON, import them later, or install shared recipes from the [community papers repo](https://github.com/YellowFoxH4XOR/deckle-papers)
+- **Intensity and grain controls** — intensity from 5–45%, grain size from Fine to Grainy, and independent grain strength
 - **Global hotkey** — ⌥⌘P toggles the texture from any app
-- **In-app updates** — checks GitHub Releases daily; one-click update, or turn on automatic installs
-- **Paper Mill** — blend your own paper (tint, wash, weave, blotch) and save it; export as JSON, import others', or install shared recipes from the [community papers repo](https://github.com/YellowFoxH4XOR/deckle-papers)
+- **In-app updates** — Deckle checks GitHub Releases daily and surfaces a notification with one-click or automatic installation
 - **Per-app rules** — hide the paper in chosen apps ("Except…") or show it only in chosen apps ("Only…")
 - **Automation** — `deckle://` URL commands work from Shortcuts, Raycast, Alfred, cron, or Terminal
 - **Capture privacy** — optionally hide the texture from screenshots and screen recordings while it stays visible to you
-- **Snooze** for 15 min / 30 min / 1 h — auto-resumes
-- **Multi-monitor support** with per-display on/off
+- **Snooze** for 15 min, 30 min, 1 hour, or 2 hours, then resume automatically
+- **Multi-monitor support** with per-display inclusion
 - **Launch at login**
-- **Click-through & lightweight** — the texture is one small tiled image; ~0% CPU at rest
-- Menu-bar only: no Dock icon, no windows to manage. The paper-sheet glyph fills in when the texture is on and shows as an outline when it's off.
+- **Click-through and lightweight** — the texture is one small tiled image; Deckle uses approximately 0% CPU at rest
+- **Menu-bar first** — no Dock icon or app-switcher entry; Paper Mill and Community Papers open only when requested
+
+<p align="center"><img src="docs/search.png" width="520" alt="Deckle search showing three matching dark paper textures"></p>
+<p align="center"><sub>Search switches directly to a full results grid; clearing it restores the status dashboard.</sub></p>
 
 ## Install
 
@@ -67,10 +84,11 @@ Or `make run` to try it from `dist/` without installing. Look for the paper-shee
 
 ## How it works
 
-- One borderless, transparent `NSWindow` per display at `.screenSaver` window level (above the menu bar), with `ignoresMouseEvents = true` so all input passes through.
-- The paper grain replicates SVG's `feTurbulence type="fractalNoise" baseFrequency="1.5" numOctaves="3"`: several octaves of seamlessly tileable value noise are summed, then mapped to translucent dark/light speckles. One 256×256 tile is generated per texture and tiled across the screen by the CoreAnimation render server, so memory stays flat no matter the resolution.
-- The intensity slider just drives the overlay window's `alphaValue` — the texture itself is rendered once and cached.
-- **Energy design:** the overlay is retained-mode — after setup, Deckle renders nothing per frame and idles at ~0 wakeups. Scheduled work (update checks) uses `NSBackgroundActivityScheduler` so macOS coalesces wakeups, and slider drags are throttled to ~30 regenerations/second. ~18 MB physical footprint regardless of display count.
+- Deckle owns one borderless, transparent `NSWindow` per display at `.screenSaver` level. Each window ignores mouse events, joins every Space, and tiles one small paper image through Core Animation, so memory does not grow with display resolution.
+- Current papers use a deterministic **spectral renderer**: a random-phase, Hermitian-symmetric frequency field is synthesized with Accelerate/vDSP, inverse transformed into seamless grain, then layered with woven fibers and sparse flecks. Older custom papers retain the original value-noise renderer for byte-compatible output.
+- The resulting 256×256-point tile contains both the tint wash and grain. The intensity control changes only the overlay window's `alphaValue`; identical render inputs reuse bounded caches.
+- Paper Mill previews an unsaved draft through the same overlay windows used by saved papers. Preview state is transient, respects excluded displays, and is torn down when the editor closes or the draft is cancelled.
+- **Energy design:** after setup, the retained-mode overlay renders nothing per frame. Update checks use `NSBackgroundActivityScheduler`; ordinary overlay changes are coalesced, and Paper Mill draft pushes are debounced to avoid regenerating spectral fields for every slider event.
 
 ## Automation
 
