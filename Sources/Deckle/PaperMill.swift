@@ -17,9 +17,88 @@ struct CustomPaper: Codable, Equatable, Identifiable {
     var weave: Double = 0
     /// Coarse mottling mixed into the grain.
     var blotch: Double = 0
+    /// Procedural engine used to render this paper. Freshly created papers
+    /// use the v2 spectral engine; papers saved before this field existed
+    /// decode as `.legacy` so they keep rendering with the original
+    /// generator, unchanged.
+    var engineVersion: TextureEngineVersion = .spectral
+    /// Stable per-paper RNG seed. Generated once when the paper is created
+    /// and stored from then on (it round-trips through export/import)
+    /// rather than being recomputed on every render.
+    var seed: UInt64 = .random(in: .min ... .max)
 
     var isDark: Bool {
         0.299 * tintRed + 0.587 * tintGreen + 0.114 * tintBlue < 0.5
+    }
+
+    init(
+        id: String = "custom-\(UUID().uuidString.lowercased())",
+        name: String = "My Paper",
+        tintRed: Double = 0.96,
+        tintGreen: Double = 0.94,
+        tintBlue: Double = 0.90,
+        wash: Double = 0.38,
+        weave: Double = 0,
+        blotch: Double = 0,
+        engineVersion: TextureEngineVersion = .spectral,
+        seed: UInt64 = .random(in: .min ... .max)
+    ) {
+        self.id = id
+        self.name = name
+        self.tintRed = tintRed
+        self.tintGreen = tintGreen
+        self.tintBlue = tintBlue
+        self.wash = wash
+        self.weave = weave
+        self.blotch = blotch
+        self.engineVersion = engineVersion
+        self.seed = seed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, tintRed, tintGreen, tintBlue, wash, weave, blotch, engineVersion, seed
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        tintRed = try container.decode(Double.self, forKey: .tintRed)
+        tintGreen = try container.decode(Double.self, forKey: .tintGreen)
+        tintBlue = try container.decode(Double.self, forKey: .tintBlue)
+        wash = try container.decode(Double.self, forKey: .wash)
+        weave = try container.decode(Double.self, forKey: .weave)
+        blotch = try container.decode(Double.self, forKey: .blotch)
+        // Version-less saves predate the v2 engine: keep them on the
+        // original generator so previously exported papers render unchanged.
+        engineVersion = try container.decodeIfPresent(TextureEngineVersion.self, forKey: .engineVersion) ?? .legacy
+        // Seed-less saves predate stored seeds: derive one deterministically
+        // from the paper's id so re-imports keep reproducing the same grain.
+        seed = try container.decodeIfPresent(UInt64.self, forKey: .seed) ?? CustomPaper.legacySeed(from: id)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(tintRed, forKey: .tintRed)
+        try container.encode(tintGreen, forKey: .tintGreen)
+        try container.encode(tintBlue, forKey: .tintBlue)
+        try container.encode(wash, forKey: .wash)
+        try container.encode(weave, forKey: .weave)
+        try container.encode(blotch, forKey: .blotch)
+        try container.encode(engineVersion, forKey: .engineVersion)
+        try container.encode(seed, forKey: .seed)
+    }
+
+    /// djb2 hash — deterministic across launches, so a legacy paper decoded
+    /// without a stored seed always derives the same one from its id.
+    private static func legacySeed(from id: String) -> UInt64 {
+        var hash: UInt64 = 5381
+        for byte in id.utf8 {
+            hash = hash &* 33 &+ UInt64(byte)
+        }
+        return hash
     }
 }
 
@@ -58,7 +137,9 @@ extension TexturePreset {
             lightStrength: dark ? 0.45 : 0.35,
             octaves: octaves,
             weave: weave > 0.01 ? (period: 8, amplitude: Float(weave)) : nil,
-            isDark: dark
+            isDark: dark,
+            engineVersion: paper.engineVersion,
+            seed: paper.seed
         )
     }
 }

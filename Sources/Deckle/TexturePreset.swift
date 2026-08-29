@@ -6,6 +6,17 @@ import AppKit
 ///
 /// The overlay is rendered at full design strength; the user-facing intensity
 /// slider simply drives the overlay window's alphaValue.
+
+/// Which procedural engine renders a preset's grain. `.legacy` preserves the
+/// original per-pixel value-noise generator byte-for-byte so version-less
+/// saved/exported custom papers keep rendering exactly as they always have;
+/// `.spectral` is the newer deterministic engine used by every built-in and
+/// every freshly created custom paper.
+enum TextureEngineVersion: Int, Codable {
+    case legacy = 1
+    case spectral = 2
+}
+
 struct TexturePreset: Identifiable, Equatable {
     let id: String
     let name: String
@@ -35,8 +46,56 @@ struct TexturePreset: Identifiable, Equatable {
     /// Dark presets are grouped separately and previewed on a dark backdrop.
     let isDark: Bool
 
+    /// Procedural engine used to render this preset's grain.
+    let engineVersion: TextureEngineVersion
+    /// Per-preset RNG seed feeding the grain field.
+    let seed: UInt64
+
+    init(
+        id: String,
+        name: String,
+        subtitle: String,
+        tint: NSColor,
+        tintAlpha: CGFloat,
+        darkColor: NSColor,
+        lightColor: NSColor,
+        darkStrength: Float,
+        lightStrength: Float,
+        octaves: [(cell: Int, weight: Float)],
+        weave: (period: Int, amplitude: Float)?,
+        isDark: Bool,
+        engineVersion: TextureEngineVersion = .spectral,
+        seed: UInt64 = 0
+    ) {
+        self.id = id
+        self.name = name
+        self.subtitle = subtitle
+        self.tint = tint
+        self.tintAlpha = tintAlpha
+        self.darkColor = darkColor
+        self.lightColor = lightColor
+        self.darkStrength = darkStrength
+        self.lightStrength = lightStrength
+        self.octaves = octaves
+        self.weave = weave
+        self.isDark = isDark
+        self.engineVersion = engineVersion
+        self.seed = seed
+    }
+
     static func == (lhs: TexturePreset, rhs: TexturePreset) -> Bool {
         lhs.cacheSignature == rhs.cacheSignature
+    }
+
+    /// Cache key covering only the deterministic field-structure inputs —
+    /// octaves, weave, engine version, and seed. The expensive noise/spectrum
+    /// computation depends on nothing else, so the renderer can share a
+    /// generated field across presets (or edits) that only differ in color.
+    var grainSignature: String {
+        var signature = "v\(engineVersion.rawValue)|seed\(seed)"
+        signature += "|" + octaves.map { "\($0.cell):\($0.weight)" }.joined(separator: ",")
+        if let weave { signature += "|w\(weave.period):\(weave.amplitude)" }
+        return signature
     }
 
     /// Cache key that changes when any render-relevant parameter changes.
@@ -45,10 +104,15 @@ struct TexturePreset: Identifiable, Equatable {
     var cacheSignature: String {
         var signature = "\(id)|\(tintAlpha)|\(darkStrength)|\(lightStrength)"
         if let tint = tint.usingColorSpace(.sRGB) {
-            signature += String(format: "|%.3f,%.3f,%.3f", tint.redComponent, tint.greenComponent, tint.blueComponent)
+            signature += String(format: "|t%.3f,%.3f,%.3f", tint.redComponent, tint.greenComponent, tint.blueComponent)
         }
-        signature += "|" + octaves.map { "\($0.cell):\($0.weight)" }.joined(separator: ",")
-        if let weave { signature += "|w\(weave.period):\(weave.amplitude)" }
+        if let dark = darkColor.usingColorSpace(.sRGB) {
+            signature += String(format: "|d%.3f,%.3f,%.3f", dark.redComponent, dark.greenComponent, dark.blueComponent)
+        }
+        if let light = lightColor.usingColorSpace(.sRGB) {
+            signature += String(format: "|l%.3f,%.3f,%.3f", light.redComponent, light.greenComponent, light.blueComponent)
+        }
+        signature += "|" + grainSignature
         return signature
     }
 
