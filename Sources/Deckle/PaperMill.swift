@@ -144,31 +144,138 @@ extension TexturePreset {
     }
 }
 
-/// The Paper Mill: a small standalone editor window for creating and editing
-/// custom papers, with a live preview rendered by the real engine.
+/// The Paper Mill: standalone editor window for creating and editing
+/// custom papers, with live on-screen preview, eye-comfort readouts, and non-overlapping positioning.
 @MainActor
-final class PaperMill {
+final class PaperMill: NSObject, NSWindowDelegate, ObservableObject {
     static let shared = PaperMill()
+    @Published private(set) var isOpen: Bool = false
     private var window: NSWindow?
 
+    func toggle(editing paper: CustomPaper? = nil) {
+        if isOpen, window != nil {
+            close()
+        } else {
+            open(editing: paper)
+        }
+    }
+
+    func close() {
+        AppState.shared.previewPaper = nil
+        window?.close()
+        window = nil
+        isOpen = false
+    }
+
     func open(editing paper: CustomPaper? = nil) {
+        present(
+            draft: paper ?? CustomPaper(),
+            isNew: paper == nil,
+            title: paper == nil ? "New Paper" : "Edit Paper"
+        )
+    }
+
+    /// Opens the editor pre-filled with `paper` as a brand-new unsaved draft:
+    /// a fresh id and seed, and nothing written to `customPapers` until the
+    /// user hits Create.
+    func compose(from paper: CustomPaper) {
+        var draft = paper
+        draft.id = "custom-\(UUID().uuidString.lowercased())"
+        draft.seed = .random(in: .min ... .max)
+        present(
+            draft: draft,
+            isNew: true,
+            title: "New Paper"
+        )
+    }
+
+    private func present(draft: CustomPaper, isNew: Bool, title: String) {
         window?.close()
         let editor = PaperMillView(
-            draft: paper ?? CustomPaper(),
-            isNew: paper == nil
+            draft: draft,
+            isNew: isNew
         ) { [weak self] in
-            self?.window?.close()
-            self?.window = nil
+            self?.close()
         }
         let hosting = NSHostingController(rootView: editor)
         let window = NSWindow(contentViewController: hosting)
-        window.title = paper == nil ? "New Paper" : "Edit Paper"
-        window.styleMask = [.titled, .closable]
+        window.title = title
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isReleasedWhenClosed = false
-        window.center()
+        window.level = .floating
+        window.minSize = NSSize(width: 400, height: 500)
+        window.delegate = self
+
+        // Position beside the actual MenuBarExtra content window. Generic
+        // panels include the colour picker and the status-item host itself.
+        if let menuWindow = NSApp.windows.first(where: {
+            String(describing: type(of: $0)).contains("MenuBarExtra")
+                && $0.isVisible
+                && $0.frame.width > 100
+        }) {
+            let spacing: CGFloat = 12
+            let screen = NSScreen.screens.first { $0.frame.intersects(menuWindow.frame) } ?? NSScreen.main
+            let bounds = screen?.visibleFrame ?? menuWindow.frame
+            let targetWidth = min(430, bounds.width)
+            let targetHeight = min(bounds.height, min(720, max(580, menuWindow.frame.height)))
+            let leftX = menuWindow.frame.minX - targetWidth - spacing
+            let rightX = menuWindow.frame.maxX + spacing
+            let targetX: CGFloat
+            if leftX >= bounds.minX {
+                targetX = leftX
+            } else if rightX + targetWidth <= bounds.maxX {
+                targetX = rightX
+            } else {
+                targetX = min(max(bounds.minX, leftX), bounds.maxX - targetWidth)
+                menuWindow.orderOut(nil)
+            }
+            let targetY = min(
+                max(bounds.minY, menuWindow.frame.maxY - targetHeight),
+                bounds.maxY - targetHeight
+            )
+            window.setFrame(
+                NSRect(x: targetX, y: targetY, width: targetWidth, height: targetHeight),
+                display: true
+            )
+        } else {
+            window.center()
+        }
+
+        window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
+        self.isOpen = true
+    }
+
+    /// Closing the editor by any route — Cancel, Save, Delete or the window's
+    /// own close button — tears the preview down.
+    func windowWillClose(_ notification: Notification) {
+        AppState.shared.previewPaper = nil
+        window = nil
+        isOpen = false
+    }
+}
+
+private struct PaperMillThumbnail: View, Equatable {
+    let preset: TexturePreset
+    let isAdjusting: Bool
+
+    static func == (lhs: PaperMillThumbnail, rhs: PaperMillThumbnail) -> Bool {
+        lhs.preset == rhs.preset && lhs.isAdjusting == rhs.isAdjusting
+    }
+
+    var body: some View {
+        Image(nsImage: TextureRenderer.preview(
+            for: preset,
+            size: CGSize(width: 380, height: 130),
+            backingScale: isAdjusting ? 1 : 2,
+            cached: false
+        ))
+        .resizable()
+        .aspectRatio(380.0 / 130.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.15)))
     }
 }
 
@@ -177,54 +284,238 @@ private struct PaperMillView: View {
     let isNew: Bool
     let dismiss: () -> Void
 
+    @ObservedObject private var state = AppState.shared
+    @State private var isPreviewing = false
+    /// Set between a control change and the debounce firing. The thumbnail
+    /// renders at 1x while it is true so a weave/blotch drag never stalls on a
+    /// full 2x spectral synthesis.
+    @State private var isAdjusting = false
+    @State private var pushTask: Task<Void, Never>?
+
     private var previewPreset: TexturePreset { TexturePreset(custom: draft) }
+    private var comfort: PaperComfort {
+        PaperComfort.evaluate(paper: draft, intensity: state.intensity)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Image(nsImage: TextureRenderer.preview(
-                for: previewPreset,
-                size: CGSize(width: 340, height: 120),
-                cached: false
-            ))
-            .resizable()
-            .aspectRatio(340.0 / 120.0, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.15)))
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 14) {
+                PaperMillThumbnail(preset: previewPreset, isAdjusting: isAdjusting)
+                    .equatable()
 
-            TextField("Name", text: $draft.name)
-                .textFieldStyle(.roundedBorder)
+                // 2. On-Screen Live Preview Control Row
+                HStack(spacing: 10) {
+                    Button(action: togglePreview) {
+                        HStack(spacing: 6) {
+                            Image(systemName: isPreviewing ? "eye.slash.fill" : "eye.fill")
+                            Text(isPreviewing ? "Stop Preview" : "Preview on Screen")
+                                .fontWeight(.medium)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(isPreviewing ? .green : .accentColor)
+                    .keyboardShortcut("p", modifiers: .command)
 
-            ColorPicker("Tint", selection: tintBinding, supportsOpacity: false)
+                    Text(isPreviewing
+                         ? "Live on screen — this window is under the overlay too."
+                         : "Renders the draft on every display before you save it.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
-            labeledSlider("Wash", value: $draft.wash, range: 0.10...0.60)
-            labeledSlider("Weave", value: $draft.weave, range: 0...0.35)
-            labeledSlider("Blotch", value: $draft.blotch, range: 0...0.40)
+                // 3. Name Field
+                TextField("Name", text: $draft.name)
+                    .textFieldStyle(.roundedBorder)
 
-            HStack {
-                if !isNew {
-                    Button("Delete", role: .destructive) {
-                        AppState.shared.customPapers.removeAll { $0.id == draft.id }
+                // 4. Comfort Recipes Row
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Comfort Starting Points")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+
+                    HStack(spacing: 6) {
+                        ForEach(PaperComfort.recipes) { recipe in
+                            Button(recipe.name) {
+                                recipe.apply(to: &draft)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .help(recipe.detail)
+                        }
+                    }
+                }
+
+                // 5. Paper Properties & Sliders
+                ColorPicker("Tint", selection: tintBinding, supportsOpacity: false)
+
+                labeledSlider("Wash", value: $draft.wash, range: 0.10...0.60)
+                labeledSlider("Weave", value: $draft.weave, range: 0...0.35)
+                labeledSlider("Blotch", value: $draft.blotch, range: 0...0.40)
+
+                // 6. Eye Comfort Evaluation Card
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Eye Comfort & Contrast")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Text(comfort.grade.rawValue)
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(gradeColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(gradeColor.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+
+                    HStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            comfortMetric(label: "Brightness", value: "−\(Int((comfort.dimming * 100).rounded()))%")
+                            comfortMetric(label: "Contrast", value: String(format: "%.1f:1", comfort.contrastRatio))
+                            comfortMetric(label: "Blue Light", value: "−\(Int((comfort.blueReduction * 100).rounded()))%")
+                        }
+                        Divider()
+                        VStack(alignment: .leading, spacing: 3) {
+                            comfortMetric(label: "Tint Temp", value: "\(Int(comfort.temperature.rounded())) K (\(temperatureDescription))")
+                            comfortMetric(label: "Pattern Load", value: "\(Int((comfort.patternLoad * 100).rounded()))%")
+                            comfortMetric(label: "Veil Alpha", value: "\(Int((comfort.veil * 100).rounded()))%")
+                        }
+                    }
+
+                    if comfort.needsContrastWarning {
+                        HStack(spacing: 5) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.orange)
+                            Text("This paper removes over 30% of bare-screen contrast — lower Wash or Intensity for crisper text.")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color.primary.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                // 7. Live Intensity Slider
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Intensity")
+                            .font(.caption)
+                        Spacer()
+                        Text("\(Int(state.intensity * 100))%")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(
+                        value: $state.intensity,
+                        in: 0.05...0.45,
+                        onEditingChanged: { isAdjusting = $0 }
+                    )
+                    Text("Shared with the menu — the level this paper will actually be seen at.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                // 8. Bottom Action Buttons
+                HStack {
+                    if !isNew {
+                        Button("Delete", role: .destructive) {
+                            stopPreview()
+                            AppState.shared.customPapers.removeAll { $0.id == draft.id }
+                            dismiss()
+                        }
+                    }
+                    Spacer()
+                    Button("Cancel") {
+                        stopPreview()
                         dismiss()
                     }
-                }
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button(isNew ? "Create" : "Save") {
-                    var papers = AppState.shared.customPapers
-                    if let index = papers.firstIndex(where: { $0.id == draft.id }) {
-                        papers[index] = draft
-                    } else {
-                        papers.append(draft)
+                    Button(isNew ? "Create" : "Save") {
+                        stopPreview()
+                        var papers = AppState.shared.customPapers
+                        if let index = papers.firstIndex(where: { $0.id == draft.id }) {
+                            papers[index] = draft
+                        } else {
+                            papers.append(draft)
+                        }
+                        AppState.shared.customPapers = papers
+                        AppState.shared.textureID = draft.id
+                        dismiss()
                     }
-                    AppState.shared.customPapers = papers
-                    AppState.shared.textureID = draft.id
-                    dismiss()
+                    .keyboardShortcut(.defaultAction)
                 }
-                .keyboardShortcut(.defaultAction)
+            }
+            .padding(18)
+        }
+        .frame(minWidth: 400, maxWidth: 600, minHeight: 500, maxHeight: 800)
+        .onChange(of: previewPreset) { _ in
+            schedulePreviewPush()
+        }
+        .onDisappear {
+            pushTask?.cancel()
+        }
+    }
+
+    private var gradeColor: Color {
+        switch comfort.grade {
+        case .excellent, .good: return .green
+        case .reduced: return .orange
+        case .poor: return .red
+        }
+    }
+
+    private var temperatureDescription: String {
+        if comfort.temperature < 3500 {
+            return "Warm"
+        } else if comfort.temperature <= 5000 {
+            return "Neutral"
+        } else {
+            return "Cool"
+        }
+    }
+
+    private func comfortMetric(label: String, value: String) -> some View {
+        HStack {
+            Text(label + ":")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption2)
+                .fontWeight(.medium)
+                .monospacedDigit()
+        }
+    }
+
+    private func togglePreview() {
+        isPreviewing.toggle()
+        state.previewPaper = isPreviewing ? draft : nil
+    }
+
+    private func stopPreview() {
+        pushTask?.cancel()
+        isPreviewing = false
+        state.previewPaper = nil
+    }
+
+    private func schedulePreviewPush() {
+        isAdjusting = true
+        pushTask?.cancel()
+        pushTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled else { return }
+            isAdjusting = false
+            if isPreviewing {
+                state.previewPaper = draft
             }
         }
-        .padding(18)
-        .frame(width: 380)
     }
 
     private var tintBinding: Binding<Color> {

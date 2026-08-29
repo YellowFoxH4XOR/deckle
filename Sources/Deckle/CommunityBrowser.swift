@@ -27,15 +27,18 @@ final class CommunityBrowser: ObservableObject {
     private static let base = "https://raw.githubusercontent.com/YellowFoxH4XOR/deckle-papers/main"
 
     func open() {
+        MenuDismiss.dismiss()
         if window == nil {
             let hosting = NSHostingController(rootView: CommunityView(browser: self))
             let window = NSWindow(contentViewController: hosting)
             window.title = "Community Papers"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
+            window.level = .floating
             window.center()
             self.window = window
         }
+        window?.orderFrontRegardless()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         if status == .idle { Task { await load() } }
