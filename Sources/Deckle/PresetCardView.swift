@@ -133,9 +133,9 @@ struct ModernPresetCard: View {
 struct PresetCollectionView: View {
     @EnvironmentObject private var state: AppState
     @Binding var searchText: String
+    @Binding var isShowingAllGrid: Bool
     var onOpenMill: ((CustomPaper, Bool) -> Void)? = nil
     @State private var selectedCategory: PresetCategory = .all
-    @State private var isShowingAllGrid: Bool = false
     @State private var scrollIndex: Int = 0
 
     private var normalizedQuery: String {
@@ -143,6 +143,16 @@ struct PresetCollectionView: View {
     }
 
     private var isSearching: Bool { !normalizedQuery.isEmpty }
+
+    private var gridViewportHeight: CGFloat {
+        let rowCount = max(1, (filteredPresets.count + 2) / 3)
+        let cardHeight: CGFloat = 108
+        let rowSpacing: CGFloat = 8
+        let contentHeight = CGFloat(rowCount) * cardHeight
+            + CGFloat(max(0, rowCount - 1)) * rowSpacing
+            + 4
+        return min(isSearching ? 360 : 236, max(cardHeight + 4, contentHeight))
+    }
 
     private var filteredPresets: [TexturePreset] {
         let customPresets = state.customPapers.map { TexturePreset(custom: $0) }
@@ -217,7 +227,7 @@ struct PresetCollectionView: View {
                     .buttonStyle(.plain)
                 } else {
                     Button(action: {
-                        withAnimation(.easeInOut(duration: 0.25)) {
+                        withAnimation(.easeOut(duration: 0.2)) {
                             let expanding = !isShowingAllGrid
                             isShowingAllGrid = expanding
                             if !expanding { selectedCategory = .all }
@@ -350,7 +360,8 @@ struct PresetCollectionView: View {
                     }
                     .padding(.vertical, 2)
                 }
-                .frame(maxHeight: isSearching ? 380 : 240)
+                .frame(height: gridViewportHeight)
+                .layoutPriority(1)
             } else {
                 // Horizontal Carousel with Interactive Scroll Affordance
                 ScrollViewReader { proxy in
