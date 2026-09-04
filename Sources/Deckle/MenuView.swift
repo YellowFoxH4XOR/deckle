@@ -8,6 +8,7 @@ struct MenuView: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject private var updater = UpdateManager.shared
     @State private var searchText = ""
+    @State private var isShowingAllPapers = false
     @ObservedObject private var mill = PaperMill.shared
     @State private var isDetailsExpanded = false
     @State private var showNotificationSheet = false
@@ -39,7 +40,7 @@ struct MenuView: View {
                     ))
             }
 
-            if !isSearching {
+            if !isLibraryFocused {
                 HeroCardView(isDetailsExpanded: $isDetailsExpanded)
             }
 
@@ -49,7 +50,7 @@ struct MenuView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            if !isSearching && !isDetailsExpanded {
+            if !isLibraryFocused && !isDetailsExpanded {
                 FeaturePromoCard {
                     PaperMill.shared.open()
                 }
@@ -58,6 +59,7 @@ struct MenuView: View {
             // 7. Preset Carousel / Grid
             PresetCollectionView(
                 searchText: $searchText,
+                isShowingAllGrid: $isShowingAllPapers,
                 onOpenMill: { paper, isNew in
                     if isNew {
                         PaperMill.shared.compose(from: paper)
@@ -72,11 +74,19 @@ struct MenuView: View {
         }
         .padding(14)
         .frame(width: 370)
+        .fixedSize(horizontal: false, vertical: true)
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.96))
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isDetailsExpanded)
         .animation(.easeInOut(duration: 0.2), value: isSearching)
+        .animation(.easeOut(duration: 0.2), value: isShowingAllPapers)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showNotificationSheet)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dismissedUpdateVersion)
+        .onChange(of: isShowingAllPapers) { expanded in
+            if expanded {
+                isDetailsExpanded = false
+                isSearchFocused = false
+            }
+        }
     }
 
     // MARK: - 1. Top Header Bar (Matching Reference Design)
@@ -192,6 +202,10 @@ struct MenuView: View {
 
     private var isSearching: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var isLibraryFocused: Bool {
+        isSearching || isShowingAllPapers
     }
 
     // MARK: - 2. Search Bar
