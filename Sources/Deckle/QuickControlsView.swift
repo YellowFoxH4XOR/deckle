@@ -8,7 +8,7 @@ struct QuickControlsView: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject private var updater = UpdateManager.shared
     @Binding var isExpanded: Bool
-    @State private var selectedTab: ControlTab = .grain
+    @Binding var selectedTab: ControlTab
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     enum ControlTab: String, CaseIterable, Identifiable {
@@ -40,10 +40,10 @@ struct QuickControlsView: View {
             // Header Row with Title and Close Button
             HStack {
                 HStack(spacing: 6) {
-                    Image(systemName: "slider.horizontal.3")
+                    Image(systemName: selectedTab.icon)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.accentColor)
-                    Text("Fine-Tuning & Controls")
+                    Text(selectedTab == .settings ? "Settings & Preferences" : "Fine-Tuning & Controls")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.primary)
                 }
@@ -391,6 +391,26 @@ struct QuickControlsView: View {
 
     private var settingsControls: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // App version and update status row
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Deckle v\(updater.currentVersion)")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.primary)
+
+                    Text("Spectral Engine v2 · macOS 13+")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                updateStatusBadge
+            }
+            .padding(.bottom, 2)
+
+            Divider()
+
             Toggle("Hide in screenshots & screen recordings", isOn: $state.hideFromCapture)
                 .toggleStyle(.checkbox)
                 .font(.system(size: 12))
@@ -407,8 +427,20 @@ struct QuickControlsView: View {
             Divider()
 
             HStack {
-                Button("Check for updates") {
-                    Task { await updater.check(userInitiated: true) }
+                Button(action: {
+                    if case .available = updater.status {
+                        updater.installLatest()
+                    } else {
+                        Task { await updater.check(userInitiated: true) }
+                    }
+                }) {
+                    HStack(spacing: 5) {
+                        if updater.status == .checking || updater.status == .installing {
+                            ProgressView()
+                                .controlSize(.mini)
+                        }
+                        Text(updateButtonTitle)
+                    }
                 }
                 .controlSize(.small)
                 .disabled(updater.status == .checking || updater.status == .installing)
@@ -422,6 +454,59 @@ struct QuickControlsView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.red)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var updateStatusBadge: some View {
+        switch updater.status {
+        case .checking:
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini)
+                Text("Checking…")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        case .upToDate:
+            HStack(spacing: 3) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("Up to date")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.system(size: 10, weight: .medium))
+        case .available(let version):
+            HStack(spacing: 3) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .foregroundStyle(Color.accentColor)
+                Text("v\(version) ready")
+                    .foregroundStyle(Color.accentColor)
+            }
+            .font(.system(size: 10, weight: .bold))
+        case .installing:
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini)
+                Text("Installing…")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+            }
+        case .failed:
+            Text("Check failed")
+                .font(.system(size: 10))
+                .foregroundStyle(.orange)
+        case .idle:
+            EmptyView()
+        }
+    }
+
+    private var updateButtonTitle: String {
+        switch updater.status {
+        case .checking: return "Checking…"
+        case .installing: return "Installing…"
+        case .available: return "Install Update"
+        case .upToDate: return "Check Again"
+        case .failed: return "Retry Check"
+        case .idle: return "Check for Updates"
         }
     }
 

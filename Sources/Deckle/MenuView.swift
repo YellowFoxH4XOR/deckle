@@ -11,7 +11,7 @@ struct MenuView: View {
     @State private var isShowingAllPapers = false
     @ObservedObject private var mill = PaperMill.shared
     @State private var isDetailsExpanded = false
-    @State private var showNotificationSheet = false
+    @State private var selectedControlTab: QuickControlsView.ControlTab = .grain
     @State private var dismissedUpdateVersion: String?
     @FocusState private var isSearchFocused: Bool
 
@@ -32,21 +32,21 @@ struct MenuView: View {
                     ))
             } else if updater.status == .installing {
                 installingBanner
-            } else if showNotificationSheet {
-                notificationBanner
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .opacity),
-                        removal: .opacity
-                    ))
             }
 
             if !isLibraryFocused {
-                HeroCardView(isDetailsExpanded: $isDetailsExpanded)
+                HeroCardView(
+                    isDetailsExpanded: $isDetailsExpanded,
+                    selectedTab: $selectedControlTab
+                )
             }
 
             // The header control must stay functional while search results are shown.
             if isDetailsExpanded {
-                QuickControlsView(isExpanded: $isDetailsExpanded)
+                QuickControlsView(
+                    isExpanded: $isDetailsExpanded,
+                    selectedTab: $selectedControlTab
+                )
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
@@ -79,7 +79,6 @@ struct MenuView: View {
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isDetailsExpanded)
         .animation(.easeInOut(duration: 0.2), value: isSearching)
         .animation(.easeOut(duration: 0.2), value: isShowingAllPapers)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showNotificationSheet)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dismissedUpdateVersion)
         .onChange(of: isShowingAllPapers) { expanded in
             if expanded {
@@ -126,15 +125,47 @@ struct MenuView: View {
             .help(mill.isOpen ? "Close Paper Mill" : "Open Paper Mill to craft custom paper textures")
             Spacer()
 
-            // 1. Prominent Notification / Update Bell Button (Matching Reference)
+            // 1. Fine-Tuning Drawer Button (Grain, Snooze, Displays, App Rules)
             Button(action: {
-                let opening = !showNotificationSheet
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    if opening { dismissedUpdateVersion = nil }
-                    showNotificationSheet = opening
+                    if isDetailsExpanded && selectedControlTab != .settings {
+                        isDetailsExpanded = false
+                    } else {
+                        selectedControlTab = .grain
+                        isDetailsExpanded = true
+                    }
                 }
-                if opening, updater.status != .checking, updater.status != .installing {
-                    Task { await updater.check(userInitiated: true) }
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                        .frame(width: 36, height: 36)
+                        .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(isDetailsExpanded && selectedControlTab != .settings ? Color.accentColor : Color.primary)
+                }
+                .overlay(
+                    Circle()
+                        .stroke(
+                            isDetailsExpanded && selectedControlTab != .settings ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.12),
+                            lineWidth: 1
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+            .help(isDetailsExpanded && selectedControlTab != .settings ? "Hide fine-tuning" : "Fine-Tuning & Adjustments")
+
+            // 2. Settings & Preferences Button
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    if isDetailsExpanded && selectedControlTab == .settings {
+                        isDetailsExpanded = false
+                    } else {
+                        selectedControlTab = .settings
+                        isDetailsExpanded = true
+                    }
                 }
             }) {
                 ZStack(alignment: .topTrailing) {
@@ -144,19 +175,19 @@ struct MenuView: View {
                             .frame(width: 36, height: 36)
                             .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
 
-                        Image(systemName: showNotificationSheet || isUpdateAvailable ? "bell.fill" : "bell")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(isUpdateAvailable ? Color.accentColor : Color.primary)
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(isDetailsExpanded && selectedControlTab == .settings ? Color.accentColor : Color.primary)
                     }
                     .overlay(
                         Circle()
                             .stroke(
-                                isUpdateAvailable ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.12),
+                                isDetailsExpanded && selectedControlTab == .settings ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.12),
                                 lineWidth: 1
                             )
                     )
 
-                    // Active notification / update badge dot
+                    // Active update badge dot if an update is waiting
                     if isUpdateAvailable {
                         Circle()
                             .fill(Color.red)
@@ -167,31 +198,7 @@ struct MenuView: View {
                 }
             }
             .buttonStyle(.plain)
-            .help(isUpdateAvailable ? "Update Available" : "Notifications & Updates")
-
-            // 2. Profile / Settings Button (Matching Reference)
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    isDetailsExpanded.toggle()
-                }
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(Color(nsColor: .controlBackgroundColor))
-                        .frame(width: 36, height: 36)
-                        .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
-
-                    Image(systemName: "person.crop.circle")
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundStyle(isDetailsExpanded ? Color.accentColor : Color.primary)
-                }
-                .overlay(
-                    Circle()
-                        .stroke(isDetailsExpanded ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.12), lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-            .help(isDetailsExpanded ? "Hide adjustments" : "Profile & Adjustments")
+            .help(isDetailsExpanded && selectedControlTab == .settings ? "Hide settings" : (isUpdateAvailable ? "Settings (Update Available)" : "Settings & Preferences"))
         }
     }
 
@@ -349,123 +356,121 @@ struct MenuView: View {
         )
     }
 
-    private var notificationBanner: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(notificationColor.opacity(0.12))
-                    .frame(width: 34, height: 34)
-
-                Image(systemName: notificationSymbol)
-                    .font(.system(size: 16))
-                    .foregroundStyle(notificationColor)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(updaterStatusText)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.primary)
-
-                Text("Version \(updater.currentVersion) · Spectral Engine v2")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    showNotificationSheet = false
-                }
-            }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.tertiary)
-                    .padding(5)
-                    .background(Color.primary.opacity(0.04))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-    }
-
-    private var updaterStatusText: String {
-        switch updater.status {
-        case .checking: return "Checking for updates…"
-        case .upToDate: return "Deckle is up to date"
-        case .available(let v): return "Version \(v) available"
-        case .installing: return "Installing update…"
-        case .failed(let err): return err
-        case .idle: return "No new notifications"
-        }
-    }
-
-    private var notificationSymbol: String {
-        switch updater.status {
-        case .checking: return "arrow.triangle.2.circlepath"
-        case .upToDate: return "checkmark.circle.fill"
-        case .available: return "arrow.down.circle.fill"
-        case .installing: return "arrow.down.circle.fill"
-        case .failed: return "exclamationmark.triangle.fill"
-        case .idle: return "bell.slash"
-        }
-    }
-
-    private var notificationColor: Color {
-        switch updater.status {
-        case .failed: return .orange
-        case .upToDate: return .green
-        case .available, .checking, .installing: return .accentColor
-        case .idle: return .secondary
-        }
-    }
-
     // MARK: - 8. Footer
 
     private var footer: some View {
-        HStack {
-            HStack(spacing: 4) {
-                Text("⌥⌘P")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Color.primary.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-
-                Text("toggles anywhere")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-            }
-
-            Spacer()
-
-            HStack(spacing: 8) {
-                Link("★ GitHub", destination: URL(string: "https://github.com/YellowFoxH4XOR/deckle")!)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
+        VStack(spacing: 8) {
+            // Version & Update Status Line
+            HStack(spacing: 6) {
+                Text("Deckle v\(updater.currentVersion)")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.primary)
 
                 Text("·")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
 
-                Button("Quit") {
-                    NSApp.terminate(nil)
+                footerUpdateStatus
+
+                Spacer()
+
+                footerUpdateAction
+            }
+
+            // Shortcuts & External Links Line
+            HStack {
+                HStack(spacing: 4) {
+                    Text("⌥⌘P")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                    Text("toggles anywhere")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .keyboardShortcut("q")
+
+                Spacer()
+
+                HStack(spacing: 8) {
+                    Link("★ GitHub", destination: URL(string: "https://github.com/YellowFoxH4XOR/deckle")!)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    Text("·")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+
+                    Button("Quit") {
+                        NSApp.terminate(nil)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .keyboardShortcut("q")
+                }
             }
         }
-        .padding(.top, 2)
+        .padding(.top, 4)
+    }
+
+    @ViewBuilder
+    private var footerUpdateStatus: some View {
+        switch updater.status {
+        case .checking:
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini)
+                Text("Checking…")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+        case .installing:
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini)
+                Text("Installing…")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.accentColor)
+            }
+        case .available(let version):
+            Text("v\(version) ready")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+        case .upToDate:
+            Text("Up to date")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        case .failed:
+            Text("Check failed")
+                .font(.system(size: 10))
+                .foregroundStyle(.orange)
+        case .idle:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var footerUpdateAction: some View {
+        if case .available = updater.status {
+            Button("Update now") {
+                updater.installLatest()
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(Color.accentColor)
+        } else if updater.status == .checking || updater.status == .installing {
+            EmptyView()
+        } else {
+            Button(action: {
+                Task { await updater.check(userInitiated: true) }
+            }) {
+                Text(updater.status == .upToDate ? "Check again" : "Check for updates")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.plain)
+            .disabled(updater.status == .checking || updater.status == .installing)
+        }
     }
 }
