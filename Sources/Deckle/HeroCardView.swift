@@ -6,6 +6,7 @@ import AppKit
 struct HeroCardView: View {
     @EnvironmentObject private var state: AppState
     @Binding var isDetailsExpanded: Bool
+    @Binding var selectedTab: QuickControlsView.ControlTab
 
     private var displayCount: Int {
         NSScreen.screens.count
@@ -125,7 +126,12 @@ struct HeroCardView: View {
                 // Secondary "..." options button
                 Button(action: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        isDetailsExpanded.toggle()
+                        if isDetailsExpanded && selectedTab == .grain {
+                            isDetailsExpanded = false
+                        } else {
+                            selectedTab = .grain
+                            isDetailsExpanded = true
+                        }
                     }
                 }) {
                     ZStack {
@@ -134,17 +140,17 @@ struct HeroCardView: View {
                             .frame(width: 38, height: 38)
                             .shadow(color: .black.opacity(0.04), radius: 2, y: 1)
 
-                        Image(systemName: isDetailsExpanded ? "slider.horizontal.3" : "ellipsis")
+                        Image(systemName: isDetailsExpanded && selectedTab == .grain ? "slider.horizontal.3" : "ellipsis")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(isDetailsExpanded ? Color.accentColor : Color.primary.opacity(0.75))
+                            .foregroundStyle(isDetailsExpanded && selectedTab == .grain ? Color.accentColor : Color.primary.opacity(0.75))
                     }
                     .overlay(
                         Circle()
-                            .stroke(isDetailsExpanded ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.12), lineWidth: 1)
+                            .stroke(isDetailsExpanded && selectedTab == .grain ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.12), lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
-                .help(isDetailsExpanded ? "Hide adjustments" : "Adjust grain & fine-tuning")
+                .help(isDetailsExpanded && selectedTab == .grain ? "Hide adjustments" : "Adjust grain & fine-tuning")
             }
 
             // Inline Intensity Slider
