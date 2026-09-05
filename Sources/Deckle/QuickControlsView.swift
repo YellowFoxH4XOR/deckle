@@ -429,7 +429,7 @@ struct QuickControlsView: View {
             HStack {
                 Button(action: {
                     if case .available = updater.status {
-                        updater.installLatest()
+                        updater.installLatest(userInitiated: true)
                     } else {
                         Task { await updater.check(userInitiated: true) }
                     }
@@ -490,10 +490,11 @@ struct QuickControlsView: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Color.accentColor)
             }
-        case .failed:
-            Text("Check failed")
+        case .failed(let message):
+            Text("Update issue")
                 .font(.system(size: 10))
                 .foregroundStyle(.orange)
+                .help(message)
         case .idle:
             EmptyView()
         }

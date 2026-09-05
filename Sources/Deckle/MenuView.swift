@@ -32,6 +32,8 @@ struct MenuView: View {
                     ))
             } else if updater.status == .installing {
                 installingBanner
+            } else if case .failed(let message) = updater.status {
+                updateFailedBanner(message)
             }
 
             if !isLibraryFocused {
@@ -291,7 +293,7 @@ struct MenuView: View {
             Spacer(minLength: 4)
 
             Button(action: {
-                updater.installLatest()
+                updater.installLatest(userInitiated: true)
             }) {
                 Text("Update")
                     .font(.system(size: 12, weight: .semibold))
@@ -354,6 +356,66 @@ struct MenuView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    /// A bounced update attempt must explain itself: this is where the user
+    /// learns *why* in-place install was impossible, not just that it was.
+    private func updateFailedBanner(_ message: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.orange.opacity(0.15))
+                    .frame(width: 36, height: 36)
+
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.orange)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(message)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Offer the manual download only when an update genuinely
+                // exists; a network blip shouldn't advertise releases.
+                if updater.latestKnownVersion != nil {
+                    Button("Open release page") {
+                        updater.openReleases()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    updater.acknowledgeFailure()
+                }
+            }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.tertiary)
+                    .padding(5)
+                    .background(Color.primary.opacity(0.05))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss")
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
         )
     }
 
@@ -442,10 +504,11 @@ struct MenuView: View {
             Text("Up to date")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
-        case .failed:
-            Text("Check failed")
+        case .failed(let message):
+            Text("Update issue")
                 .font(.system(size: 10))
                 .foregroundStyle(.orange)
+                .help(message)
         case .idle:
             EmptyView()
         }
@@ -455,7 +518,7 @@ struct MenuView: View {
     private var footerUpdateAction: some View {
         if case .available = updater.status {
             Button("Update now") {
-                updater.installLatest()
+                updater.installLatest(userInitiated: true)
             }
             .buttonStyle(.plain)
             .font(.system(size: 11, weight: .bold))

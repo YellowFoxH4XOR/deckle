@@ -5,6 +5,8 @@ import Combine
 /// repos/YellowFoxH4XOR/deckle/releases/latest daily, compares versions, and
 /// either surfaces an "Update" button in the menu or — when the user enables
 /// automatic updates — downloads the DMG and swaps the app bundle in place.
+/// When in-place replacement is impossible, the failure explains itself; the
+/// browser is never hijacked without an explicit install click.
 @MainActor
 final class UpdateManager: ObservableObject {
     static let shared = UpdateManager()
@@ -25,7 +27,8 @@ final class UpdateManager: ObservableObject {
         didSet {
             UserDefaults.standard.set(autoInstall, forKey: "autoInstallUpdates")
             if autoInstall, case .available = status {
-                installLatest()
+                // Flipping the toggle is not an install click; never browser.
+                installLatest(userInitiated: false)
             }
         }
     }
@@ -34,7 +37,12 @@ final class UpdateManager: ObservableObject {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     }
 
-    private var downloadURL: URL?
+    /// Internal, not private: deterministic tests stage it. Only `check()`
+    /// writes it in production, and only from this pinned-URL block.
+    var downloadURL: URL?
+    /// Newest version seen in a release, kept so dismissing a failure banner
+    /// restores the "update available" affordance instead of stranding it.
+    var latestKnownVersion: String?
     /// System-scheduled daily check: unlike a Timer, the OS coalesces the
     /// wakeup with other activity and prefers energy-cheap moments.
     private let checkActivity = NSBackgroundActivityScheduler(
@@ -79,6 +87,8 @@ final class UpdateManager: ObservableObject {
                 : release.tagName
 
             guard isNewer(latest, than: currentVersion) else {
+                downloadURL = nil
+                latestKnownVersion = nil
                 status = userInitiated ? .upToDate : .idle
                 return
             }
@@ -92,9 +102,11 @@ final class UpdateManager: ObservableObject {
                         && url.path.hasPrefix("/YellowFoxH4XOR/deckle/releases/download/")
                         ? url : nil
                 }
+            latestKnownVersion = latest
             status = .available(latest)
             if autoInstall {
-                installLatest()
+                // An auto-install was never an install click — no browser.
+                installLatest(userInitiated: false)
             }
         } catch {
             // Quiet failure for background checks; only surface when asked.
@@ -102,23 +114,76 @@ final class UpdateManager: ObservableObject {
         }
     }
 
-    func installLatest() {
+    /// Why in-place self-replacement cannot happen. Classification is a pure,
+    /// nonisolated function of the bundle path plus one file-manager fact, so
+    /// every branch is testable without touching disk.
+    enum InstallBlocker: Equatable, CaseIterable {
+        case translocated
+        case notAnApp
+        case locationNotWritable
+
+        /// Every message names /Applications: a bounced "Update" click must
+        /// tell the user exactly where the app has to live to self-update.
+        var userMessage: String {
+            switch self {
+            case .translocated:
+                return "macOS is running Deckle from its download location, so it can't replace itself. Drag Deckle.app to /Applications once — updates install in place after that."
+            case .notAnApp:
+                return "Deckle isn't running as an app bundle, so it can't update itself. Install Deckle.app into /Applications and relaunch."
+            case .locationNotWritable:
+                return "Deckle can't write where it lives (running from a mounted disk image?). Move Deckle.app to /Applications to update in place."
+            }
+        }
+    }
+
+    nonisolated static func selfReplaceBlocker(bundleURL: URL, installDirWritable: Bool) -> InstallBlocker? {
+        // Translocation is checked first: those paths still end in ".app",
+        // but the shown path is a randomized read-only mount whose real
+        // install location is unknowable.
+        if bundleURL.path.contains("/AppTranslocation/") { return .translocated }
+        guard bundleURL.pathExtension == "app" else { return .notAnApp }
+        guard installDirWritable else { return .locationNotWritable }
+        return nil
+    }
+
+    /// - Parameter userInitiated: the user explicitly asked to install now,
+    ///   which alone licenses handing off to the browser (only possible when
+    ///   the release has no downloadable .dmg). Background checks and the
+    ///   auto-install path must never touch the default app.
+    func installLatest(userInitiated: Bool) {
         let target = Bundle.main.bundleURL
+        installLatest(
+            userInitiated: userInitiated,
+            target: target,
+            installDirWritable: FileManager.default.isWritableFile(
+                atPath: target.deletingLastPathComponent().path
+            )
+        ) {
+            NSWorkspace.shared.open($0)
+        }
+    }
 
-        // In-place replacement only works when Deckle is a normal .app whose
-        // enclosing folder we can write to. It can't when the app is running
-        // "translocated" (Gatekeeper's read-only randomized path, used the
-        // first time an unsigned app is opened from a DMG or Downloads) — the
-        // real install location is then unknown, so hand off to the browser.
-        let installDir = target.deletingLastPathComponent()
-        let canSelfReplace = target.pathExtension == "app"
-            && !target.path.contains("/AppTranslocation/")
-            && FileManager.default.isWritableFile(atPath: installDir.path)
+    /// Seam-injected core so the browser-hijack guarantee and the classifier
+    /// are testable without moving real bundles, probing real install dirs,
+    /// or spawning real browsers.
+    func installLatest(userInitiated: Bool, target: URL, installDirWritable: Bool, openReleasesPage: (URL) -> Void) {
+        // Two swaps racing on one bundle path can't both be safe.
+        guard status != .installing else { return }
 
-        guard let dmg = downloadURL, canSelfReplace else {
-            NSWorkspace.shared.open(releasesPage)
+        if let blocker = Self.selfReplaceBlocker(bundleURL: target, installDirWritable: installDirWritable) {
+            // Stay put and explain: the recovery is moving the app, not
+            // downloading it again. The banner's manual link covers that.
+            status = .failed(blocker.userMessage)
             return
         }
+        // Only ever download release assets of this repo over HTTPS, so a
+        // missing .dmg means the pinned host has nothing safe to swap in.
+        guard let dmg = downloadURL else {
+            status = .failed("Couldn't find the update download on GitHub releases.")
+            if userInitiated { openReleasesPage(releasesPage) }
+            return
+        }
+
         status = .installing
         Task {
             do {
@@ -128,6 +193,18 @@ final class UpdateManager: ObservableObject {
                 status = .failed(error.localizedDescription)
             }
         }
+    }
+
+    /// Manual escape hatch offered by the failure banner.
+    func openReleases() {
+        NSWorkspace.shared.open(releasesPage)
+    }
+
+    /// Clears a surfaced failure once the user acknowledges it, restoring the
+    /// still-true "update available" state when there is one.
+    func acknowledgeFailure() {
+        guard case .failed = status else { return }
+        status = latestKnownVersion.map(Status.available) ?? .idle
     }
 
     // MARK: - Install mechanics
