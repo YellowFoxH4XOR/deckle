@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-29T20:28:55Z",
+  "title": "Design System: Deckle",
+  "extensions": {
+    "colorMeta": {
+      "brand-rust": {
+        "role": "primary",
+        "displayName": "Deckle Rust",
+        "canonical": "#B34A22",
+        "tonalRamp": ["#2D1009", "#4C1B0F", "#702819", "#963720", "#B34A22", "#CC7355", "#E6A891", "#F7DED3"]
+      },
+      "action-blue": {
+        "role": "primary",
+        "displayName": "Action Blue",
+        "canonical": "#007AFF",
+        "tonalRamp": ["#001A35", "#003A70", "#0057A8", "#007AFF", "#409CFF", "#80BDFF", "#BFDEFF", "#EAF5FF"]
+      },
+      "success-green": {
+        "role": "secondary",
+        "displayName": "Success Green",
+        "canonical": "#34C759",
+        "tonalRamp": ["#0B2B13", "#145124", "#1E7A36", "#28A348", "#34C759", "#6AD881", "#A0E9AC", "#E1F8E6"]
+      },
+      "warning-orange": {
+        "role": "secondary",
+        "displayName": "Warning Orange",
+        "canonical": "#FF9500",
+        "tonalRamp": ["#351F00", "#704100", "#A86100", "#DF8200", "#FF9500", "#FFB340", "#FFD180", "#FFF0D4"]
+      },
+      "window-light": {
+        "role": "neutral",
+        "displayName": "Quiet Window",
+        "canonical": "#F5F5F7",
+        "tonalRamp": ["#242426", "#414145", "#626267", "#85858B", "#AEAEB4", "#D1D1D6", "#E8E8EC", "#F5F5F7"]
+      },
+      "label-light": {
+        "role": "neutral",
+        "displayName": "Ink Label",
+        "canonical": "#1D1D1F",
+        "tonalRamp": ["#1D1D1F", "#343438", "#515157", "#6E6E73", "#8E8E93", "#AEAEB2", "#D1D1D6", "#F5F5F7"]
+      }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Paper Headline", "purpose": "Selected paper names in the hero." },
+      "title": { "displayName": "Panel Title", "purpose": "Library, editor, and drawer titles." },
+      "body": { "displayName": "Control Body", "purpose": "Buttons, status, and paper names." },
+      "label": { "displayName": "Utility Label", "purpose": "Chips, sections, and slider labels." },
+      "micro": { "displayName": "Supporting Copy", "purpose": "Descriptions and compact help." },
+      "mono": { "displayName": "Stable Metric", "purpose": "Percentages, timers, counts, and engine metadata." }
+    },
+    "shadows": [
+      { "name": "control-lift", "value": "0 1px 2px rgba(0, 0, 0, 0.04)", "purpose": "Circular toolbar controls and compact capsules." },
+      { "name": "texture-lift", "value": "0 1px 3px rgba(0, 0, 0, 0.08)", "purpose": "Texture preview against the hero surface." },
+      { "name": "hero-lift", "value": "0 3px 8px rgba(0, 0, 0, 0.06)", "purpose": "Primary status surface only." },
+      { "name": "paging-lift", "value": "0 2px 4px rgba(0, 0, 0, 0.12)", "purpose": "Floating carousel navigation." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "150ms ease-in-out", "purpose": "Tab and chip selection." },
+      { "name": "mode-standard", "value": "200ms ease-out", "purpose": "Compact, All Papers, and search mode transitions." },
+      { "name": "panel-reveal", "value": "200ms ease-out", "purpose": "Notification and control disclosure without bounce." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Capsule",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Compact native primary action used for Open Mill and live preview.",
+      "html": "<button class=\"ds-primary-capsule\">Open Mill</button>",
+      "css": ".ds-primary-capsule { background:#007AFF; color:#FFFFFF; border:0; border-radius:999px; min-height:36px; padding:6px 14px; font:600 13px -apple-system,BlinkMacSystemFont,sans-serif; transition:background-color 150ms ease-out,transform 150ms ease-out; } .ds-primary-capsule:hover { background:#006EE6; } .ds-primary-capsule:active { transform:scale(.96); } .ds-primary-capsule:focus-visible { outline:2px solid rgba(0,122,255,.45); outline-offset:2px; }"
+    },
+    {
+      "name": "Circular Action",
+      "kind": "button",
+      "refersTo": "button-icon",
+      "description": "Neutral 36-point toolbar control for notifications and account settings.",
+      "html": "<button class=\"ds-icon-action\" aria-label=\"Notifications\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9\"/><path d=\"M10 21h4\"/></svg></button>",
+      "css": ".ds-icon-action { width:36px; height:36px; display:grid; place-items:center; border-radius:999px; border:1px solid rgba(0,0,0,.08); background:#FFFFFF; color:#1D1D1F; box-shadow:0 1px 2px rgba(0,0,0,.04); transition:background-color 150ms ease-out,transform 150ms ease-out; } .ds-icon-action:hover { background:#F5F5F7; } .ds-icon-action:active { transform:scale(.96); } .ds-icon-action:focus-visible { outline:2px solid rgba(0,122,255,.4); outline-offset:2px; }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "Rounded native search field that enters a focused results mode.",
+      "html": "<label class=\"ds-search\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-3.5-3.5\"/></svg><input placeholder=\"Search all papers & textures…\"></label>",
+      "css": ".ds-search { height:40px; display:flex; align-items:center; gap:8px; padding:0 10px; border:1px solid rgba(0,0,0,.08); border-radius:12px; background:#FFFFFF; color:#6E6E73; transition:border-color 150ms ease-out; } .ds-search:focus-within { border-color:rgba(0,122,255,.5); color:#007AFF; } .ds-search input { width:100%; border:0; outline:0; background:transparent; color:#1D1D1F; font:500 13px -apple-system,BlinkMacSystemFont,sans-serif; }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "filter-chip",
+      "description": "Capsule category selector with explicit selected state.",
+      "html": "<button class=\"ds-filter-chip\" aria-pressed=\"true\">All</button>",
+      "css": ".ds-filter-chip { border:0; border-radius:999px; padding:4px 10px; background:#F5F5F7; color:#1D1D1F; font:600 11px -apple-system,BlinkMacSystemFont,sans-serif; transition:background-color 150ms ease-out,transform 150ms ease-out; } .ds-filter-chip[aria-pressed=\"true\"] { background:#B34A22; color:#FFFFFF; } .ds-filter-chip:active { transform:scale(.96); } .ds-filter-chip:focus-visible { outline:2px solid rgba(179,74,34,.35); outline-offset:2px; }"
+    },
+    {
+      "name": "Hero Status Surface",
+      "kind": "card",
+      "refersTo": "hero-card",
+      "description": "The single raised summary surface for current paper and intensity.",
+      "html": "<section class=\"ds-hero\"><span class=\"ds-meta\">ENGINE V2 · ACTIVE</span><h2>Soft Wove</h2><p>Active</p><button>Pause texture</button></section>",
+      "css": ".ds-hero { padding:16px; border:1px solid rgba(0,0,0,.08); border-radius:18px; background:#FFFFFF; color:#1D1D1F; box-shadow:0 3px 8px rgba(0,0,0,.06); font-family:-apple-system,BlinkMacSystemFont,sans-serif; } .ds-hero h2 { margin:12px 0 2px; font-size:19px; line-height:1.2; } .ds-hero p { margin:0; color:#34C759; font-size:13px; } .ds-hero button { width:100%; margin-top:14px; min-height:38px; border:1px solid rgba(0,0,0,.10); border-radius:999px; background:#F5F5F7; font-weight:600; } .ds-hero button:focus-visible { outline:2px solid rgba(0,122,255,.4); outline-offset:2px; } .ds-meta { color:#6E6E73; font:600 10px ui-monospace,SFMono-Regular,monospace; }"
+    },
+    {
+      "name": "Paper Card",
+      "kind": "card",
+      "refersTo": "paper-card",
+      "description": "Fixed-width tactile preview used in both carousel and three-column grid.",
+      "html": "<button class=\"ds-paper-card\" aria-pressed=\"true\"><span class=\"ds-paper-texture\"></span><strong>Soft Wove</strong><small>Smooth</small></button>",
+      "css": ".ds-paper-card { width:108px; padding:8px; display:grid; gap:8px; text-align:left; border:1.5px solid #B34A22; border-radius:12px; background:rgba(179,74,34,.09); color:#1D1D1F; font-family:-apple-system,BlinkMacSystemFont,sans-serif; transition:background-color 150ms ease-out,transform 150ms ease-out; } .ds-paper-card:hover { background:rgba(179,74,34,.13); } .ds-paper-card:active { transform:scale(.96); } .ds-paper-card:focus-visible { outline:2px solid rgba(179,74,34,.35); outline-offset:2px; } .ds-paper-card strong { font-size:12px; } .ds-paper-card small { color:#6E6E73; font-size:10px; } .ds-paper-texture { height:52px; border-radius:8px; border:1px solid rgba(0,0,0,.1); background:radial-gradient(circle at 30% 20%,#FFFFFF,#ECE8DF); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Paper Studio",
+    "overview": "Deckle is opened briefly while someone is reading, writing, or working across one or more displays. Its controls should feel like well-kept tools on a calm desk: familiar, precise, tactile, and ready to disappear as soon as the paper is chosen.\n\nThe interface is a restrained macOS product surface. System materials and semantic colors provide adaptation; one accent identifies selection and primary action. Texture is the subject, not decoration. Dense controls remain legible without turning the popover into a dashboard.\n\nDeckle rejects ornamental glassmorphism, neon utility palettes, oversized marketing typography, nested card stacks, and motion that delays a task.",
+    "keyCharacteristics": [
+      "System-native and immediately understandable",
+      "Quiet neutral surfaces with one active accent",
+      "Paper previews as the dominant visual material",
+      "Compact controls with explicit labels and state",
+      "Focused modes instead of stacking every section vertically",
+      "Fast, interruptible transitions with no bounce"
+    ],
+    "rules": [
+      { "name": "The Focused Surface Rule", "body": "When a task expands, the competing summary surface leaves. All Papers hides the hero card; search hides summary content; Compact restores it.", "section": "overview" },
+      { "name": "The Honest Material Rule", "body": "The system window may use native translucency. Content surfaces inside it are opaque or strongly tonal. Empty translucent regions are forbidden.", "section": "overview" },
+      { "name": "The One Active Accent Rule", "body": "Accent color marks current selection, focus, or the primary action. Inactive controls stay neutral.", "section": "colors" },
+      { "name": "The Semantic State Rule", "body": "Green means active or successful, orange means caution or snoozed, and red means destructive, failed, or newly available. Never reuse those colors decoratively.", "section": "colors" },
+      { "name": "The Stable Number Rule", "body": "Every changing percentage, timer, count, and comfort metric uses monospaced or monospaced-digit typography so controls do not shift.", "section": "typography" },
+      { "name": "The Native Voice Rule", "body": "Buttons use sentence case and short verbs. Uppercase is reserved for terse engine metadata, never ordinary labels.", "section": "typography" },
+      { "name": "The Ambient Only Rule", "body": "Shadows remain diffuse and below 12% black. If an edge looks drawn or dirty, the shadow is too strong.", "section": "elevation" },
+      { "name": "The One Raised Hero Rule", "body": "The hero may be raised. Inner metric groups and control drawers use tonal separation, not another large shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use the Apple system font and native semantic colors for application UI.",
+      "Do keep the popover at 370 points with 14-point outer padding and 12-point section rhythm.",
+      "Do give every vertical `ScrollView` inside MenuBarExtra a deterministic viewport height.",
+      "Do hide the hero when All Papers or search becomes the primary task.",
+      "Do use `.fixedSize(horizontal: false, vertical: true)` at the popover root when content height changes by mode.",
+      "Do keep card dimensions explicit: 108-point paper cards, 8-point gaps, three columns.",
+      "Do use 150 to 250ms state transitions with ease-out timing and no visible bounce.",
+      "Do use monospaced digits for live percentages, countdowns, counts, and comfort metrics.",
+      "Do use checkmarks, labels, or symbols alongside semantic color.",
+      "Do show carousel fades and arrows only when content actually overflows.",
+      "Do keep Paper Mill comfort language factual and non-medical."
+    ],
+    "donts": [
+      "Don't use `.frame(maxHeight:)` alone for a flexible grid inside MenuBarExtra. It may collapse while the window keeps translucent empty space.",
+      "Don't stack the hero, control drawer, and expanded library in one vertical state.",
+      "Don't use decorative glassmorphism. Native window material is sufficient; content surfaces must remain readable and bounded.",
+      "Don't nest cards inside cards. Use spacing, dividers, and tonal groups before another container.",
+      "Don't use gradient text, neon accents, side-stripe borders, or oversized display typography.",
+      "Don't use success, warning, or danger colors outside their semantic meaning.",
+      "Don't hide a selected category when returning to Compact; reset it to All.",
+      "Don't truncate control-tab labels to make them fit. Keep the tab row scrollable and signal overflow.",
+      "Don't animate layout with spring bounce. Motion communicates a state change and then gets out of the way.",
+      "Don't leave blank material below the footer after a mode transition. If that occurs, the sizing contract is broken."
+    ]
+  }
+}
