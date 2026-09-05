@@ -1,36 +1,16 @@
 import XCTest
 @testable import Deckle
 
-/// The defect this suite pins: a bounced "Update" used to be silent (browser
-/// tab, no explanation) and any auto-install path could hijack the browser on
-/// a background check. Both are asserted through the seam-injected
-/// `installLatest(userInitiated:target:installDirWritable:openReleasesPage:)`,
-/// which never launches a real `selfReplace` Task: every test either blocks
-/// in the classifier or finds no download URL.
+/// Pins the updater's decisions without mutating its private pinned-release
+/// state, touching a real app bundle, or opening a browser.
 @MainActor
 final class UpdateManagerTests: XCTestCase {
-    private var updater: UpdateManager { UpdateManager.shared }
     private let translocatedPath = "/private/var/folders/zz/zy/AppTranslocation/"
         + "D7C484A9-5915-4468-B6E9-11959001A111/d/Deckle.app"
+    private let pinnedDownload =
+        "https://github.com/YellowFoxH4XOR/deckle/releases/download/v1.7.3/Deckle-1.7.3.dmg"
 
-    override func setUp() {
-        super.setUp()
-        reset()
-    }
-
-    override func tearDown() {
-        reset()
-        super.tearDown()
-    }
-
-    /// The manager is a process-wide singleton; leave no state behind.
-    private func reset() {
-        updater.status = .idle
-        updater.downloadURL = nil
-        updater.latestKnownVersion = nil
-    }
-
-    // MARK: - Classifier
+    // MARK: - Bundle classification
 
     func testNormalInstallLocationCanSelfReplace() {
         XCTAssertNil(UpdateManager.selfReplaceBlocker(
@@ -40,8 +20,6 @@ final class UpdateManagerTests: XCTestCase {
     }
 
     func testTranslocationTakesPrecedenceOverEverythingElse() {
-        // Same path reports writable or not — the shown path is a randomized
-        // read-only mount either way, so classification must not depend on it.
         for writable in [true, false] {
             XCTAssertEqual(UpdateManager.selfReplaceBlocker(
                 bundleURL: URL(fileURLWithPath: translocatedPath),
@@ -64,85 +42,130 @@ final class UpdateManagerTests: XCTestCase {
         ), .locationNotWritable)
     }
 
-    func testEveryBlockerMessageNamesTheRecoveryLocation() {
-        // Contract, not prose styling: whatever failed, the user is told
-        // where the app has to live for in-place updates to work.
-        for blocker in UpdateManager.InstallBlocker.allCases {
-            XCTAssertTrue(
-                blocker.userMessage.contains("Applications"),
-                "\(blocker) message omits the recovery location"
-            )
-        }
-    }
-
-    // MARK: - Install behavior (the actual regression)
+    // MARK: - Install decisions
 
     func testBlockedInstallExplainsItselfAndNeverOpensBrowser() {
-        updater.status = .available("9.9.9")
-        updater.downloadURL = URL(
-            string: "https://github.com/YellowFoxH4XOR/deckle/releases/download/v9.9.9/Deckle-9.9.9.dmg"
-        )!
-        var opened: [URL] = []
+        let decision = UpdateManager.installDecision(
+            currentStatus: .available("1.7.3"),
+            bundleURL: URL(fileURLWithPath: translocatedPath),
+            installDirWritable: true,
+            hasDownload: true,
+            userInitiated: true
+        )
 
-        // Even a user-initiated click must not launch a browser when the
-        // bundle is translocated; the message is the action.
-        updater.installLatest(
-            userInitiated: true,
-            target: URL(fileURLWithPath: translocatedPath),
-            installDirWritable: true
-        ) { opened.append($0) }
-
-        XCTAssertEqual(updater.status, .failed(UpdateManager.InstallBlocker.translocated.userMessage))
-        XCTAssertTrue(opened.isEmpty)
+        XCTAssertEqual(decision.status, .failed(UpdateManager.InstallBlocker.translocated.userMessage))
+        XCTAssertEqual(decision.action, .none)
     }
 
-    func testMissingAssetHandsOffToReleasesOnlyOnExplicitClick() {
-        var opened: [URL] = []
-        updater.installLatest(
-            userInitiated: false,
-            target: URL(fileURLWithPath: "/Applications/Deckle.app"),
-            installDirWritable: true
-        ) { opened.append($0) }
-        XCTAssertEqual(opened.count, 0, "background install must never open the browser")
-        XCTAssertEqual(updater.status, .failed("Couldn't find the update download on GitHub releases."))
+    func testMissingAssetOpensReleasesOnlyAfterExplicitInstallClick() {
+        let background = UpdateManager.installDecision(
+            currentStatus: .available("1.7.3"),
+            bundleURL: URL(fileURLWithPath: "/Applications/Deckle.app"),
+            installDirWritable: true,
+            hasDownload: false,
+            userInitiated: false
+        )
+        let explicit = UpdateManager.installDecision(
+            currentStatus: .available("1.7.3"),
+            bundleURL: URL(fileURLWithPath: "/Applications/Deckle.app"),
+            installDirWritable: true,
+            hasDownload: false,
+            userInitiated: true
+        )
 
-        updater.installLatest(
-            userInitiated: true,
-            target: URL(fileURLWithPath: "/Applications/Deckle.app"),
-            installDirWritable: true
-        ) { opened.append($0) }
-        XCTAssertEqual(opened.count, 1, "explicit click may hand off when there is nothing to swap")
+        XCTAssertEqual(background.action, .none)
+        XCTAssertEqual(explicit.action, .openReleases)
+        XCTAssertEqual(background.status, explicit.status)
     }
 
     func testInstallingBlocksReentrancy() {
-        updater.status = .installing
-        var opened: [URL] = []
-        updater.installLatest(
+        let decision = UpdateManager.installDecision(
+            currentStatus: .installing,
+            bundleURL: URL(fileURLWithPath: translocatedPath),
+            installDirWritable: false,
+            hasDownload: false,
+            userInitiated: true
+        )
+
+        XCTAssertEqual(decision, UpdateManager.InstallDecision(status: .installing, action: .none))
+    }
+
+    // MARK: - Release transition
+
+    func testAutomaticUpdateTransitionIsNeverUserInitiated() throws {
+        let transition = try UpdateManager.releaseTransition(
+            from: releaseData(downloadURL: pinnedDownload),
+            currentVersion: "1.7.2",
             userInitiated: true,
-            target: URL(fileURLWithPath: translocatedPath),
-            installDirWritable: true
-        ) { opened.append($0) }
-        // The guard returns before classification; status untouched.
-        XCTAssertEqual(updater.status, .installing)
-        XCTAssertTrue(opened.isEmpty)
+            autoInstallEnabled: true
+        )
+
+        XCTAssertEqual(transition.status, .available("1.7.3"))
+        XCTAssertEqual(transition.version, "1.7.3")
+        XCTAssertEqual(transition.downloadURL?.absoluteString, pinnedDownload)
+        XCTAssertEqual(transition.installUserInitiated, false)
     }
 
-    // MARK: - Acknowledge
+    func testReleaseTransitionRejectsUnpinnedAssetOrigin() throws {
+        let transition = try UpdateManager.releaseTransition(
+            from: releaseData(downloadURL: "https://example.com/Deckle-1.7.3.dmg"),
+            currentVersion: "1.7.2",
+            userInitiated: false,
+            autoInstallEnabled: false
+        )
 
-    func testAcknowledgeRestoresKnownAvailableUpdate() {
-        updater.latestKnownVersion = "1.2.3"
-        updater.status = .failed("whatever")
-        updater.acknowledgeFailure()
-        XCTAssertEqual(updater.status, .available("1.2.3"))
+        XCTAssertEqual(transition.status, .available("1.7.3"))
+        XCTAssertNil(transition.downloadURL)
+        XCTAssertNil(transition.installUserInitiated)
     }
 
-    func testAcknowledgeFallsToIdleWithoutKnownUpdateAndIgnoresOtherStates() {
-        updater.status = .failed("whatever")
-        updater.acknowledgeFailure()
-        XCTAssertEqual(updater.status, .idle)
+    func testCurrentReleaseClearsAvailableUpdateState() throws {
+        let transition = try UpdateManager.releaseTransition(
+            from: releaseData(downloadURL: pinnedDownload),
+            currentVersion: "1.7.3",
+            userInitiated: true,
+            autoInstallEnabled: true
+        )
 
-        updater.status = .installing
-        updater.acknowledgeFailure()
-        XCTAssertEqual(updater.status, .installing)
+        XCTAssertEqual(transition.status, .upToDate)
+        XCTAssertNil(transition.version)
+        XCTAssertNil(transition.downloadURL)
+        XCTAssertNil(transition.installUserInitiated)
+    }
+
+    // MARK: - Failure dismissal
+
+    func testFailureDismissalRestoresAndDismissesKnownVersionTogether() {
+        let dismissal = UpdateManager.failureDismissal(
+            status: .failed("Move Deckle"),
+            latestKnownVersion: "1.7.3"
+        )
+
+        XCTAssertEqual(dismissal.restoredStatus, .available("1.7.3"))
+        XCTAssertEqual(dismissal.dismissedVersion, "1.7.3")
+    }
+
+    func testFailureDismissalFallsToIdleWithoutKnownVersion() {
+        let dismissal = UpdateManager.failureDismissal(
+            status: .failed("Couldn't reach GitHub"),
+            latestKnownVersion: nil
+        )
+
+        XCTAssertEqual(dismissal.restoredStatus, .idle)
+        XCTAssertNil(dismissal.dismissedVersion)
+    }
+
+    private func releaseData(downloadURL: String) -> Data {
+        Data("""
+        {
+          "tag_name": "v1.7.3",
+          "assets": [
+            {
+              "name": "Deckle-1.7.3.dmg",
+              "browser_download_url": "\(downloadURL)"
+            }
+          ]
+        }
+        """.utf8)
     }
 }

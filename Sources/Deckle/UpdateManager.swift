@@ -20,6 +20,34 @@ final class UpdateManager: ObservableObject {
         case failed(String)
     }
 
+    enum InstallAction: Equatable {
+        case none
+        case openReleases
+        case install
+    }
+
+    struct InstallDecision: Equatable {
+        let status: Status
+        let action: InstallAction
+    }
+
+    struct ReleaseTransition: Equatable {
+        let status: Status
+        let version: String?
+        let downloadURL: URL?
+        let installUserInitiated: Bool?
+    }
+
+    struct FailureDismissal: Equatable {
+        let restoredStatus: Status
+        let dismissedVersion: String?
+    }
+
+    private struct AvailableUpdate {
+        let version: String
+        let downloadURL: URL?
+    }
+
     @Published var status: Status = .idle
 
     /// When on, a found update installs without asking.
@@ -37,12 +65,13 @@ final class UpdateManager: ObservableObject {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     }
 
-    /// Internal, not private: deterministic tests stage it. Only `check()`
-    /// writes it in production, and only from this pinned-URL block.
-    var downloadURL: URL?
-    /// Newest version seen in a release, kept so dismissing a failure banner
-    /// restores the "update available" affordance instead of stranding it.
-    var latestKnownVersion: String?
+    /// Version and pinned asset URL move together. Only the GitHub response
+    /// transition below can create this private install state.
+    private var availableUpdate: AvailableUpdate?
+
+    var latestKnownVersion: String? {
+        availableUpdate?.version
+    }
     /// System-scheduled daily check: unlike a Timer, the OS coalesces the
     /// wakeup with other activity and prefers energy-cheap moments.
     private let checkActivity = NSBackgroundActivityScheduler(
@@ -80,33 +109,19 @@ final class UpdateManager: ObservableObject {
             var request = URLRequest(url: apiURL)
             request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
             let (data, _) = try await URLSession.shared.data(for: request)
-            let release = try JSONDecoder().decode(Release.self, from: data)
+            let transition = try Self.releaseTransition(
+                from: data,
+                currentVersion: currentVersion,
+                userInitiated: userInitiated,
+                autoInstallEnabled: autoInstall
+            )
 
-            let latest = release.tagName.hasPrefix("v")
-                ? String(release.tagName.dropFirst())
-                : release.tagName
-
-            guard isNewer(latest, than: currentVersion) else {
-                downloadURL = nil
-                latestKnownVersion = nil
-                status = userInitiated ? .upToDate : .idle
-                return
+            availableUpdate = transition.version.map {
+                AvailableUpdate(version: $0, downloadURL: transition.downloadURL)
             }
-            // Only ever download release assets of this repo over HTTPS —
-            // never a URL the API response could have been tampered into.
-            downloadURL = release.assets.first { $0.name.hasSuffix(".dmg") }
-                .flatMap { URL(string: $0.browserDownloadUrl) }
-                .flatMap { url in
-                    url.scheme == "https"
-                        && url.host == "github.com"
-                        && url.path.hasPrefix("/YellowFoxH4XOR/deckle/releases/download/")
-                        ? url : nil
-                }
-            latestKnownVersion = latest
-            status = .available(latest)
-            if autoInstall {
-                // An auto-install was never an install click — no browser.
-                installLatest(userInitiated: false)
+            status = transition.status
+            if let installUserInitiated = transition.installUserInitiated {
+                installLatest(userInitiated: installUserInitiated)
             }
         } catch {
             // Quiet failure for background checks; only surface when asked.
@@ -115,25 +130,60 @@ final class UpdateManager: ObservableObject {
     }
 
     /// Why in-place self-replacement cannot happen. Classification is a pure,
-    /// nonisolated function of the bundle path plus one file-manager fact, so
-    /// every branch is testable without touching disk.
-    enum InstallBlocker: Equatable, CaseIterable {
+    /// nonisolated function of the bundle path plus one file-manager fact.
+    enum InstallBlocker: Equatable {
         case translocated
         case notAnApp
         case locationNotWritable
 
-        /// Every message names /Applications: a bounced "Update" click must
-        /// tell the user exactly where the app has to live to self-update.
-        var userMessage: String {
+        nonisolated var userMessage: String {
             switch self {
             case .translocated:
-                return "macOS is running Deckle from its download location, so it can't replace itself. Drag Deckle.app to /Applications once — updates install in place after that."
+                return "macOS is running Deckle from a protected download location. Move it to /Applications or ~/Applications, then try again."
             case .notAnApp:
-                return "Deckle isn't running as an app bundle, so it can't update itself. Install Deckle.app into /Applications and relaunch."
+                return "Deckle isn't running as an app bundle. Install Deckle.app in /Applications or ~/Applications, then reopen it."
             case .locationNotWritable:
-                return "Deckle can't write where it lives (running from a mounted disk image?). Move Deckle.app to /Applications to update in place."
+                return "Deckle can't write to this folder. Move it to ~/Applications, or install the update manually."
             }
         }
+    }
+
+    nonisolated static func releaseTransition(
+        from data: Data,
+        currentVersion: String,
+        userInitiated: Bool,
+        autoInstallEnabled: Bool
+    ) throws -> ReleaseTransition {
+        let release = try JSONDecoder().decode(Release.self, from: data)
+        let latest = release.tagName.hasPrefix("v")
+            ? String(release.tagName.dropFirst())
+            : release.tagName
+
+        guard isNewer(latest, than: currentVersion) else {
+            return ReleaseTransition(
+                status: userInitiated ? .upToDate : .idle,
+                version: nil,
+                downloadURL: nil,
+                installUserInitiated: nil
+            )
+        }
+
+        // Only release assets from this repository can enter install state.
+        let downloadURL = release.assets.first { $0.name.hasSuffix(".dmg") }
+            .flatMap { URL(string: $0.browserDownloadUrl) }
+            .flatMap { url in
+                url.scheme == "https"
+                    && url.host == "github.com"
+                    && url.path.hasPrefix("/YellowFoxH4XOR/deckle/releases/download/")
+                    ? url : nil
+            }
+
+        return ReleaseTransition(
+            status: .available(latest),
+            version: latest,
+            downloadURL: downloadURL,
+            installUserInitiated: autoInstallEnabled ? false : nil
+        )
     }
 
     nonisolated static func selfReplaceBlocker(bundleURL: URL, installDirWritable: Bool) -> InstallBlocker? {
@@ -146,51 +196,61 @@ final class UpdateManager: ObservableObject {
         return nil
     }
 
-    /// - Parameter userInitiated: the user explicitly asked to install now,
-    ///   which alone licenses handing off to the browser (only possible when
-    ///   the release has no downloadable .dmg). Background checks and the
-    ///   auto-install path must never touch the default app.
-    func installLatest(userInitiated: Bool) {
-        let target = Bundle.main.bundleURL
-        installLatest(
-            userInitiated: userInitiated,
-            target: target,
-            installDirWritable: FileManager.default.isWritableFile(
-                atPath: target.deletingLastPathComponent().path
-            )
-        ) {
-            NSWorkspace.shared.open($0)
+    nonisolated static func installDecision(
+        currentStatus: Status,
+        bundleURL: URL,
+        installDirWritable: Bool,
+        hasDownload: Bool,
+        userInitiated: Bool
+    ) -> InstallDecision {
+        guard currentStatus != .installing else {
+            return InstallDecision(status: .installing, action: .none)
         }
+        if let blocker = selfReplaceBlocker(
+            bundleURL: bundleURL,
+            installDirWritable: installDirWritable
+        ) {
+            return InstallDecision(status: .failed(blocker.userMessage), action: .none)
+        }
+        guard hasDownload else {
+            return InstallDecision(
+                status: .failed("Couldn't find the update download on GitHub releases."),
+                action: userInitiated ? .openReleases : .none
+            )
+        }
+        return InstallDecision(status: .installing, action: .install)
     }
 
-    /// Seam-injected core so the browser-hijack guarantee and the classifier
-    /// are testable without moving real bundles, probing real install dirs,
-    /// or spawning real browsers.
-    func installLatest(userInitiated: Bool, target: URL, installDirWritable: Bool, openReleasesPage: (URL) -> Void) {
-        // Two swaps racing on one bundle path can't both be safe.
-        guard status != .installing else { return }
+    /// Only an explicit install click may hand off to the browser. Background
+    /// checks and automatic installs always surface a message in the menu.
+    func installLatest(userInitiated: Bool) {
+        let target = Bundle.main.bundleURL
+        let update = availableUpdate
+        let decision = Self.installDecision(
+            currentStatus: status,
+            bundleURL: target,
+            installDirWritable: FileManager.default.isWritableFile(
+                atPath: target.deletingLastPathComponent().path
+            ),
+            hasDownload: update?.downloadURL != nil,
+            userInitiated: userInitiated
+        )
+        status = decision.status
 
-        if let blocker = Self.selfReplaceBlocker(bundleURL: target, installDirWritable: installDirWritable) {
-            // Stay put and explain: the recovery is moving the app, not
-            // downloading it again. The banner's manual link covers that.
-            status = .failed(blocker.userMessage)
+        switch decision.action {
+        case .none:
             return
-        }
-        // Only ever download release assets of this repo over HTTPS, so a
-        // missing .dmg means the pinned host has nothing safe to swap in.
-        guard let dmg = downloadURL else {
-            status = .failed("Couldn't find the update download on GitHub releases.")
-            if userInitiated { openReleasesPage(releasesPage) }
-            return
-        }
-
-        status = .installing
-        Task {
-            do {
-                try await selfReplace(target: target, dmg: dmg)
-                relaunch(target)
-            } catch {
-                status = .failed(error.localizedDescription)
+        case .openReleases:
+            NSWorkspace.shared.open(releasesPage)
+        case .install:
+            guard let dmg = update?.downloadURL else { return }
+            Task {
+                do {
+                    try await selfReplace(target: target, dmg: dmg)
+                    relaunch(target)
+                } catch {
+                    status = .failed(error.localizedDescription)
+                }
             }
         }
     }
@@ -200,11 +260,26 @@ final class UpdateManager: ObservableObject {
         NSWorkspace.shared.open(releasesPage)
     }
 
-    /// Clears a surfaced failure once the user acknowledges it, restoring the
-    /// still-true "update available" state when there is one.
+    nonisolated static func failureDismissal(
+        status: Status,
+        latestKnownVersion: String?
+    ) -> FailureDismissal {
+        guard case .failed = status else {
+            return FailureDismissal(restoredStatus: status, dismissedVersion: nil)
+        }
+        return FailureDismissal(
+            restoredStatus: latestKnownVersion.map(Status.available) ?? .idle,
+            dismissedVersion: latestKnownVersion
+        )
+    }
+
+    /// Clears a surfaced failure while preserving a known available update.
     func acknowledgeFailure() {
-        guard case .failed = status else { return }
-        status = latestKnownVersion.map(Status.available) ?? .idle
+        let dismissal = Self.failureDismissal(
+            status: status,
+            latestKnownVersion: latestKnownVersion
+        )
+        status = dismissal.restoredStatus
     }
 
     // MARK: - Install mechanics
@@ -287,7 +362,7 @@ final class UpdateManager: ObservableObject {
         return text
     }
 
-    private func isNewer(_ a: String, than b: String) -> Bool {
+    private nonisolated static func isNewer(_ a: String, than b: String) -> Bool {
         let av = a.split(separator: ".").map { Int($0) ?? 0 }
         let bv = b.split(separator: ".").map { Int($0) ?? 0 }
         for i in 0..<max(av.count, bv.count) {

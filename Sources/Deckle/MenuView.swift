@@ -395,6 +395,9 @@ struct MenuView: View {
 
             Button(action: {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    // Record the version first: restoring `.available` must
+                    // not replace this banner with a second banner.
+                    dismissedUpdateVersion = updater.latestKnownVersion
                     updater.acknowledgeFailure()
                 }
             }) {
