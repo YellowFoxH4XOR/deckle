@@ -77,9 +77,10 @@ struct MenuView: View {
         .fixedSize(horizontal: false, vertical: true)
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.96))
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isDetailsExpanded)
-        .animation(.easeInOut(duration: 0.2), value: isSearching)
-        .animation(.easeOut(duration: 0.2), value: isShowingAllPapers)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dismissedUpdateVersion)
+        // MenuBarExtra sizes its native window from the content's fitting size.
+        // Animate neither side of a library switch through intermediate heights.
+        .animation(nil, value: isLibraryFocused)
         .onChange(of: isShowingAllPapers) { expanded in
             if expanded {
                 isDetailsExpanded = false

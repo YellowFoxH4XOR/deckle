@@ -227,11 +227,9 @@ struct PresetCollectionView: View {
                     .buttonStyle(.plain)
                 } else {
                     Button(action: {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            let expanding = !isShowingAllGrid
-                            isShowingAllGrid = expanding
-                            if !expanding { selectedCategory = .all }
-                        }
+                        let expanding = !isShowingAllGrid
+                        isShowingAllGrid = expanding
+                        if !expanding { selectedCategory = .all }
                     }) {
                         HStack(spacing: 4) {
                             Text(isShowingAllGrid ? "Compact" : "All papers")
