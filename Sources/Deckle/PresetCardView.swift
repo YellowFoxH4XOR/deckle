@@ -151,7 +151,7 @@ struct PresetCollectionView: View {
         let contentHeight = CGFloat(rowCount) * cardHeight
             + CGFloat(max(0, rowCount - 1)) * rowSpacing
             + 4
-        return min(isSearching ? 360 : 236, max(cardHeight + 4, contentHeight))
+        return min(isSearching ? 360 : 356, max(cardHeight + 4, contentHeight))
     }
 
     private var filteredPresets: [TexturePreset] {

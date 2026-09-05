@@ -16,6 +16,12 @@ struct MenuView: View {
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
+        MenuPopover(preferredWidth: 370) {
+            content
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 12) {
             // 1. Top Navigation & Action Header (Always Pinned at Top)
             topHeaderBar
@@ -76,8 +82,6 @@ struct MenuView: View {
         }
         .padding(14)
         .frame(width: 370)
-        .fixedSize(horizontal: false, vertical: true)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.96))
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isDetailsExpanded)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dismissedUpdateVersion)
         // MenuBarExtra sizes its native window from the content's fitting size.
