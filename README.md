@@ -43,7 +43,7 @@ Not a calibrated blue-light filter — a *matte texture* overlay. The grain brea
 - **Paper portability** — export custom papers as JSON, import them later, or install shared recipes from the [community papers repo](https://github.com/YellowFoxH4XOR/deckle-papers)
 - **Intensity and grain controls** — intensity from 5–45%, grain size from Fine to Grainy, and independent grain strength
 - **Global hotkey** — ⌥⌘P toggles the texture from any app
-- **In-app updates** — Deckle checks GitHub Releases daily and surfaces a notification with one-click or automatic installation
+- **In-app updates** — Deckle checks GitHub Releases daily and installs automatically from writable app locations; otherwise it explains the blocker and offers the release page
 - **Per-app rules** — hide the paper in chosen apps ("Except…") or show it only in chosen apps ("Only…")
 - **Automation** — `deckle://` URL commands work from Shortcuts, Raycast, Alfred, cron, or Terminal
 - **Capture privacy** — optionally hide the texture from screenshots and screen recordings while it stays visible to you

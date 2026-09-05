@@ -5,6 +5,8 @@ import Combine
 /// repos/YellowFoxH4XOR/deckle/releases/latest daily, compares versions, and
 /// either surfaces an "Update" button in the menu or — when the user enables
 /// automatic updates — downloads the DMG and swaps the app bundle in place.
+/// When in-place replacement is impossible, the failure explains itself; the
+/// browser is never hijacked without an explicit install click.
 @MainActor
 final class UpdateManager: ObservableObject {
     static let shared = UpdateManager()
@@ -18,6 +20,34 @@ final class UpdateManager: ObservableObject {
         case failed(String)
     }
 
+    enum InstallAction: Equatable {
+        case none
+        case openReleases
+        case install
+    }
+
+    struct InstallDecision: Equatable {
+        let status: Status
+        let action: InstallAction
+    }
+
+    struct ReleaseTransition: Equatable {
+        let status: Status
+        let version: String?
+        let downloadURL: URL?
+        let installUserInitiated: Bool?
+    }
+
+    struct FailureDismissal: Equatable {
+        let restoredStatus: Status
+        let dismissedVersion: String?
+    }
+
+    private struct AvailableUpdate {
+        let version: String
+        let downloadURL: URL?
+    }
+
     @Published var status: Status = .idle
 
     /// When on, a found update installs without asking.
@@ -25,7 +55,8 @@ final class UpdateManager: ObservableObject {
         didSet {
             UserDefaults.standard.set(autoInstall, forKey: "autoInstallUpdates")
             if autoInstall, case .available = status {
-                installLatest()
+                // Flipping the toggle is not an install click; never browser.
+                installLatest(userInitiated: false)
             }
         }
     }
@@ -34,7 +65,13 @@ final class UpdateManager: ObservableObject {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     }
 
-    private var downloadURL: URL?
+    /// Version and pinned asset URL move together. Only the GitHub response
+    /// transition below can create this private install state.
+    private var availableUpdate: AvailableUpdate?
+
+    var latestKnownVersion: String? {
+        availableUpdate?.version
+    }
     /// System-scheduled daily check: unlike a Timer, the OS coalesces the
     /// wakeup with other activity and prefers energy-cheap moments.
     private let checkActivity = NSBackgroundActivityScheduler(
@@ -72,29 +109,19 @@ final class UpdateManager: ObservableObject {
             var request = URLRequest(url: apiURL)
             request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
             let (data, _) = try await URLSession.shared.data(for: request)
-            let release = try JSONDecoder().decode(Release.self, from: data)
+            let transition = try Self.releaseTransition(
+                from: data,
+                currentVersion: currentVersion,
+                userInitiated: userInitiated,
+                autoInstallEnabled: autoInstall
+            )
 
-            let latest = release.tagName.hasPrefix("v")
-                ? String(release.tagName.dropFirst())
-                : release.tagName
-
-            guard isNewer(latest, than: currentVersion) else {
-                status = userInitiated ? .upToDate : .idle
-                return
+            availableUpdate = transition.version.map {
+                AvailableUpdate(version: $0, downloadURL: transition.downloadURL)
             }
-            // Only ever download release assets of this repo over HTTPS —
-            // never a URL the API response could have been tampered into.
-            downloadURL = release.assets.first { $0.name.hasSuffix(".dmg") }
-                .flatMap { URL(string: $0.browserDownloadUrl) }
-                .flatMap { url in
-                    url.scheme == "https"
-                        && url.host == "github.com"
-                        && url.path.hasPrefix("/YellowFoxH4XOR/deckle/releases/download/")
-                        ? url : nil
-                }
-            status = .available(latest)
-            if autoInstall {
-                installLatest()
+            status = transition.status
+            if let installUserInitiated = transition.installUserInitiated {
+                installLatest(userInitiated: installUserInitiated)
             }
         } catch {
             // Quiet failure for background checks; only surface when asked.
@@ -102,32 +129,157 @@ final class UpdateManager: ObservableObject {
         }
     }
 
-    func installLatest() {
-        let target = Bundle.main.bundleURL
+    /// Why in-place self-replacement cannot happen. Classification is a pure,
+    /// nonisolated function of the bundle path plus one file-manager fact.
+    enum InstallBlocker: Equatable {
+        case translocated
+        case notAnApp
+        case locationNotWritable
 
-        // In-place replacement only works when Deckle is a normal .app whose
-        // enclosing folder we can write to. It can't when the app is running
-        // "translocated" (Gatekeeper's read-only randomized path, used the
-        // first time an unsigned app is opened from a DMG or Downloads) — the
-        // real install location is then unknown, so hand off to the browser.
-        let installDir = target.deletingLastPathComponent()
-        let canSelfReplace = target.pathExtension == "app"
-            && !target.path.contains("/AppTranslocation/")
-            && FileManager.default.isWritableFile(atPath: installDir.path)
-
-        guard let dmg = downloadURL, canSelfReplace else {
-            NSWorkspace.shared.open(releasesPage)
-            return
-        }
-        status = .installing
-        Task {
-            do {
-                try await selfReplace(target: target, dmg: dmg)
-                relaunch(target)
-            } catch {
-                status = .failed(error.localizedDescription)
+        nonisolated var userMessage: String {
+            switch self {
+            case .translocated:
+                return "macOS is running Deckle from a protected download location. Move it to /Applications or ~/Applications, then try again."
+            case .notAnApp:
+                return "Deckle isn't running as an app bundle. Install Deckle.app in /Applications or ~/Applications, then reopen it."
+            case .locationNotWritable:
+                return "Deckle can't write to this folder. Move it to ~/Applications, or install the update manually."
             }
         }
+    }
+
+    nonisolated static func releaseTransition(
+        from data: Data,
+        currentVersion: String,
+        userInitiated: Bool,
+        autoInstallEnabled: Bool
+    ) throws -> ReleaseTransition {
+        let release = try JSONDecoder().decode(Release.self, from: data)
+        let latest = release.tagName.hasPrefix("v")
+            ? String(release.tagName.dropFirst())
+            : release.tagName
+
+        guard isNewer(latest, than: currentVersion) else {
+            return ReleaseTransition(
+                status: userInitiated ? .upToDate : .idle,
+                version: nil,
+                downloadURL: nil,
+                installUserInitiated: nil
+            )
+        }
+
+        // Only release assets from this repository can enter install state.
+        let downloadURL = release.assets.first { $0.name.hasSuffix(".dmg") }
+            .flatMap { URL(string: $0.browserDownloadUrl) }
+            .flatMap { url in
+                url.scheme == "https"
+                    && url.host == "github.com"
+                    && url.path.hasPrefix("/YellowFoxH4XOR/deckle/releases/download/")
+                    ? url : nil
+            }
+
+        return ReleaseTransition(
+            status: .available(latest),
+            version: latest,
+            downloadURL: downloadURL,
+            installUserInitiated: autoInstallEnabled ? false : nil
+        )
+    }
+
+    nonisolated static func selfReplaceBlocker(bundleURL: URL, installDirWritable: Bool) -> InstallBlocker? {
+        // Translocation is checked first: those paths still end in ".app",
+        // but the shown path is a randomized read-only mount whose real
+        // install location is unknowable.
+        if bundleURL.path.contains("/AppTranslocation/") { return .translocated }
+        guard bundleURL.pathExtension == "app" else { return .notAnApp }
+        guard installDirWritable else { return .locationNotWritable }
+        return nil
+    }
+
+    nonisolated static func installDecision(
+        currentStatus: Status,
+        bundleURL: URL,
+        installDirWritable: Bool,
+        hasDownload: Bool,
+        userInitiated: Bool
+    ) -> InstallDecision {
+        guard currentStatus != .installing else {
+            return InstallDecision(status: .installing, action: .none)
+        }
+        if let blocker = selfReplaceBlocker(
+            bundleURL: bundleURL,
+            installDirWritable: installDirWritable
+        ) {
+            return InstallDecision(status: .failed(blocker.userMessage), action: .none)
+        }
+        guard hasDownload else {
+            return InstallDecision(
+                status: .failed("Couldn't find the update download on GitHub releases."),
+                action: userInitiated ? .openReleases : .none
+            )
+        }
+        return InstallDecision(status: .installing, action: .install)
+    }
+
+    /// Only an explicit install click may hand off to the browser. Background
+    /// checks and automatic installs always surface a message in the menu.
+    func installLatest(userInitiated: Bool) {
+        let target = Bundle.main.bundleURL
+        let update = availableUpdate
+        let decision = Self.installDecision(
+            currentStatus: status,
+            bundleURL: target,
+            installDirWritable: FileManager.default.isWritableFile(
+                atPath: target.deletingLastPathComponent().path
+            ),
+            hasDownload: update?.downloadURL != nil,
+            userInitiated: userInitiated
+        )
+        status = decision.status
+
+        switch decision.action {
+        case .none:
+            return
+        case .openReleases:
+            NSWorkspace.shared.open(releasesPage)
+        case .install:
+            guard let dmg = update?.downloadURL else { return }
+            Task {
+                do {
+                    try await selfReplace(target: target, dmg: dmg)
+                    relaunch(target)
+                } catch {
+                    status = .failed(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    /// Manual escape hatch offered by the failure banner.
+    func openReleases() {
+        NSWorkspace.shared.open(releasesPage)
+    }
+
+    nonisolated static func failureDismissal(
+        status: Status,
+        latestKnownVersion: String?
+    ) -> FailureDismissal {
+        guard case .failed = status else {
+            return FailureDismissal(restoredStatus: status, dismissedVersion: nil)
+        }
+        return FailureDismissal(
+            restoredStatus: latestKnownVersion.map(Status.available) ?? .idle,
+            dismissedVersion: latestKnownVersion
+        )
+    }
+
+    /// Clears a surfaced failure while preserving a known available update.
+    func acknowledgeFailure() {
+        let dismissal = Self.failureDismissal(
+            status: status,
+            latestKnownVersion: latestKnownVersion
+        )
+        status = dismissal.restoredStatus
     }
 
     // MARK: - Install mechanics
@@ -210,7 +362,7 @@ final class UpdateManager: ObservableObject {
         return text
     }
 
-    private func isNewer(_ a: String, than b: String) -> Bool {
+    private nonisolated static func isNewer(_ a: String, than b: String) -> Bool {
         let av = a.split(separator: ".").map { Int($0) ?? 0 }
         let bv = b.split(separator: ".").map { Int($0) ?? 0 }
         for i in 0..<max(av.count, bv.count) {
