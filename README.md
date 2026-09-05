@@ -37,7 +37,7 @@ Not a calibrated blue-light filter — a *matte texture* overlay. The grain brea
   - *Papers* — Soft Wove, Rice Paper, Laid Cotton, Newsprint, Cold Press, Artist Canvas, Felt Side, Frost Glassine
   - *Warm & tinted* — Foxed Amber, Bookcloth, Recycled Kraft, Plum Kozo, Rose Quartz, Sage Press, Nordic Sky
   - *Dark* — Ink Stone, Midnight Slate, Espresso
-- **Searchable paper library** — search names, descriptions, IDs, and material terms; filter by light, dark, or custom papers; use the edge fade and arrow to browse the compact carousel
+- **Searchable paper library** — search names, descriptions, IDs, and material terms; filter by light, dark, or custom papers; use the edge fade and arrow to browse the compact carousel. Opening All Papers or searching resizes the menu immediately to fit its content
 - **Paper Mill with live screen preview** — tune tint, wash, weave, and blotch against your actual desktop before creating or saving the paper
 - **Comfort guidance** — see contrast retention, estimated brightness and blue-channel reduction, tint temperature, pattern load, and four starting recipes: Focus, Reading, Paper, and Night
 - **Paper portability** — export custom papers as JSON, import them later, or install shared recipes from the [community papers repo](https://github.com/YellowFoxH4XOR/deckle-papers)
