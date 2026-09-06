@@ -33,10 +33,11 @@ Not a calibrated blue-light filter — a *matte texture* overlay. The grain brea
 
 ## Features
 
-- **18 built-in paper textures** in three families:
+- **22 built-in paper textures** in four families:
   - *Papers* — Soft Wove, Rice Paper, Laid Cotton, Newsprint, Cold Press, Artist Canvas, Felt Side, Frost Glassine
   - *Warm & tinted* — Foxed Amber, Bookcloth, Recycled Kraft, Plum Kozo, Rose Quartz, Sage Press, Nordic Sky
   - *Dark* — Ink Stone, Midnight Slate, Espresso
+  - *Spectral+ (v3)* — Gesso Ground, Linen Veil, Parchment Grain, Slate Veil — oriented fibers and surface roughness with deeper tints that cut glare
 - **Searchable paper library** — search names, descriptions, IDs, and material terms; filter by light, dark, or custom papers; use the edge fade and arrow to browse the compact carousel. Opening All Papers or searching resizes the menu immediately to fit its content
 - **Paper Mill with live screen preview** — tune tint, wash, weave, and blotch against your actual desktop before creating or saving the paper
 - **Comfort guidance** — see contrast retention, estimated brightness and blue-channel reduction, tint temperature, pattern load, and four starting recipes: Focus, Reading, Paper, and Night
@@ -85,7 +86,7 @@ Or `make run` to try it from `dist/` without installing. Look for the paper-shee
 ## How it works
 
 - Deckle owns one borderless, transparent `NSWindow` per display at `.screenSaver` level. Each window ignores mouse events, joins every Space, and tiles one small paper image through Core Animation, so memory does not grow with display resolution.
-- Current papers use a deterministic **spectral renderer**: a random-phase, Hermitian-symmetric frequency field is synthesized with Accelerate/vDSP, inverse transformed into seamless grain, then layered with woven fibers and sparse flecks. Older custom papers retain the original value-noise renderer for byte-compatible output.
+- Built-in and newly created papers use the deterministic **spectral+ (v3) renderer**: a random-phase, Hermitian-symmetric frequency field is synthesized with Accelerate/vDSP, inverse transformed into seamless grain, then layered with woven fibers, oriented Gabor-modulated fiber bundles that darken (absorbing light like real paper fibers), and Perlin surface roughness for a deeper, matte feel. Older custom papers retain their stored spectral or legacy engine for byte-compatible output.
 - The resulting 256×256-point tile contains both the tint wash and grain. The intensity control changes only the overlay window's `alphaValue`; identical render inputs reuse bounded caches.
 - Paper Mill previews an unsaved draft through the same overlay windows used by saved papers. Preview state is transient, respects excluded displays, and is torn down when the editor closes or the draft is cancelled.
 - **Energy design:** after setup, the retained-mode overlay renders nothing per frame. Update checks use `NSBackgroundActivityScheduler`; ordinary overlay changes are coalesced, and Paper Mill draft pushes are debounced to avoid regenerating spectral fields for every slider event.

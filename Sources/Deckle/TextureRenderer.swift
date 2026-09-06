@@ -4,7 +4,7 @@ import CoreGraphics
 
 /// Generates tileable paper-grain images.
 ///
-/// Two procedural engines render a preset's grain, selected by
+/// Versioned procedural engines render a preset's grain, selected by
 /// `TexturePreset.engineVersion`:
 ///
 /// - `.legacy` mimics SVG `feTurbulence type="fractalNoise" baseFrequency="1.5"
@@ -15,11 +15,13 @@ import CoreGraphics
 /// - `.spectral` synthesizes a real-valued periodic field via a random-phase
 ///   frequency spectrum and an inverse 2D FFT (`vDSP_fft2d_zip`), then layers
 ///   in a deterministic woven crosshatch, toroidally wrapped elongated fiber
-///   splats, and sparse flecks. Every built-in preset and every freshly
-///   created custom paper uses this engine.
+///   splats, and sparse flecks. Existing built-in presets stay on this path.
+/// - `.spectralPlus` starts from the v2 spectrum and adds oriented,
+///   glare-reducing fiber bundles plus multi-octave surface roughness for new
+///   custom papers and advanced built-ins.
 ///
-/// Both engines map their [0, 1] field to translucent dark/light speckles the
-/// same way, and both composite over screen content like a paper sheet would.
+/// All engines map their [0, 1] field to translucent dark/light speckles the
+/// same way, and all composite over screen content like a paper sheet would.
 enum TextureRenderer {
     /// Logical size (in grid points) of the field both engines synthesize.
     /// Legacy renders it 1:1 as 256 pixels; spectral renders it as 256 points
@@ -69,7 +71,12 @@ enum TextureRenderer {
         var strength: Double = 1.0
 
         static let none = GrainAdjustments()
-        var cacheKey: String { String(format: "s%.2f-k%.2f", scale, strength) }
+        /// Exact bit-pattern key: the renderer consumes full-precision
+        /// adjustments, so decimal rounding would return stale tiles for
+        /// sub-step slider changes.
+        var cacheKey: String {
+            "s\(scale.bitPattern)-k\(strength.bitPattern)"
+        }
     }
 
     /// Snaps an arbitrary backing scale factor to the only two resolutions
@@ -102,7 +109,7 @@ enum TextureRenderer {
         switch preset.engineVersion {
         case .legacy:
             image = legacyTile(preset: preset, adjustments: adjustments, cached: cached)
-        case .spectral:
+        case .spectral, .spectralPlus:
             image = spectralTile(preset: preset, adjustments: adjustments, scale: scale, cached: cached)
         }
 
@@ -175,7 +182,8 @@ enum TextureRenderer {
         cached: Bool = true
     ) -> NSImage {
         let scale = normalizedScale(backingScale)
-        let key = "\(preset.cacheSignature)|\(Int(size.width))x\(Int(size.height))|bs\(scale)"
+        let sizeKey = "\(Double(size.width).bitPattern)x\(Double(size.height).bitPattern)"
+        let key = "\(preset.cacheSignature)|\(sizeKey)|bs\(scale)"
         if cached, let hit = previewCache.get(key) {
             cacheMetrics.previewHits += 1
             return hit
@@ -262,9 +270,9 @@ enum TextureRenderer {
         let key: String
         switch preset.engineVersion {
         case .legacy:
-            key = "\(preset.grainSignature)|\(adjustments.scale)"
-        case .spectral:
-            key = "\(preset.grainSignature)|\(adjustments.scale)|bs\(backingFactor)"
+            key = "\(preset.grainSignature)|\(adjustments.cacheKey)"
+        case .spectral, .spectralPlus:
+            key = "\(preset.grainSignature)|\(adjustments.cacheKey)|bs\(backingFactor)"
         }
         if cached, let hit = fieldCache.get(key) {
             cacheMetrics.fieldHits += 1
@@ -278,6 +286,8 @@ enum TextureRenderer {
             value = legacyFractalNoise(size: fieldSize, preset: preset, adjustments: adjustments)
         case .spectral:
             value = spectralField(size: fieldSize * backingFactor, backingFactor: backingFactor, preset: preset, adjustments: adjustments)
+        case .spectralPlus:
+            value = v3SpectralField(size: fieldSize * backingFactor, backingFactor: backingFactor, preset: preset, adjustments: adjustments)
         }
 
         if cached { fieldCache.set(key, value) }
@@ -724,6 +734,180 @@ enum TextureRenderer {
         }
 
         return base
+    }
+
+    // MARK: - Spectral+ engine (v3)
+
+    /// Builds on the v2 spectral field by layering three physically
+    /// motivated passes:
+    ///
+    /// 1. **V2 spectral base** — the same Hermitian-symmetric random-phase
+    ///    spectrum that drives every v2 preset. This gives the field its
+    ///    broadband paper-grain texture.
+    /// 2. **Oriented fiber modulation** — a set of Gabor-like sinusoidal
+    ///    carriers aligned along `v3Config.fiberAngle`. Each carrier is
+    ///    amplitude-modulated by a slowly varying Gaussian envelope so the
+    ///    fibers appear as discrete strands rather than a uniform stripe.
+    ///    `fiberStrength` scales the modulation depth. Fibers darken the
+    ///    field (never brighten it) — real paper fibers scatter and absorb
+    ///    light — which is what gives v3 its glare-reduction advantage over
+    ///    v2 at identical intensity.
+    /// 3. **Perlin surface roughness** — an independent multi-octave
+    ///    value-noise layer whose amplitude is controlled by
+    ///    `surfaceRoughness`. This fills in the micro-texture between
+    ///    fibers, simulating the pulp irregularities of real handmade
+    ///    paper.
+    ///
+    /// All three layers are synthesized at the target backing-pixel
+    /// resolution (`size × size`) so Retina tiles get genuine detail,
+    /// and the result is deterministically seeded from `preset.seed`.
+    private static func v3SpectralField(
+        size: Int,
+        backingFactor: Int,
+        preset: TexturePreset,
+        adjustments: GrainAdjustments
+    ) -> [Float] {
+        let n = size
+        let config = preset.v3Config ?? .default
+
+        // 1. V2 spectral base
+        var base = spectralField(
+            size: size,
+            backingFactor: backingFactor,
+            preset: preset,
+            adjustments: adjustments
+        )
+
+        // 2. Oriented fiber modulation
+        let fiberStrength = max(0, min(1, config.fiberStrength))
+        if fiberStrength > 0.001 {
+            var fiberRng = SplitMix64(seed: preset.seed &+ 0xA5B9_C4E3_D2F1_0678)
+            let angle = config.fiberAngle
+            // Number of fiber bundles scales with strength.
+            let bundleCount = max(1, Int((fiberStrength * 12).rounded()))
+            let factor = Float(backingFactor)
+            let nf = Float(n)
+
+            for _ in 0..<bundleCount {
+                // Each bundle has a random origin, a small angular jitter,
+                // and a Gaussian envelope that confines its visibility to
+                // a narrow stripe.
+                let cx = fiberRng.unitFloat() * nf
+                let cy = fiberRng.unitFloat() * nf
+                let jitter = (fiberRng.unitFloat() - 0.5) * 0.3
+                let bCos = cos(angle + jitter)
+                let bSin = sin(angle + jitter)
+                // Envelope sigma perpendicular to the fiber direction,
+                // in pixels. Tighter stripes at lower strength.
+                let envelopeSigma = (3.0 + fiberRng.unitFloat() * 6.0) * max(0.25, Float(adjustments.scale)) * factor
+                // Carrier frequency along the fiber direction: one full
+                // cycle every `carrierPeriod` pixels.
+                let carrierPeriod = max(4.0, (8.0 + fiberRng.unitFloat() * 20.0) * max(0.25, Float(adjustments.scale)) * factor)
+                let carrierK = 2 * Float.pi / carrierPeriod
+                // Per-bundle intensity. Fibers are darkening: real paper
+                // fibers scatter and absorb light, so the carrier is
+                // mapped to a 0…1 envelope that darkens (never brightens)
+                // the field along the strand — this is what makes v3
+                // actually cut glare instead of only adding texture.
+                let amplitude = fiberStrength * (0.25 + fiberRng.unitFloat() * 0.30)
+                let twoSigmaSq = 2 * envelopeSigma * envelopeSigma
+
+                // Stamp this bundle across the tile.
+                let radius = Int((envelopeSigma * 3).rounded())
+                for dy in -radius...radius {
+                    for dx in -radius...radius {
+                        // Rotate into fiber-local coordinates.
+                        let fdx = Float(dx) * bCos + Float(dy) * bSin
+                        let fdy = -Float(dx) * bSin + Float(dy) * bCos
+                        // Gaussian envelope perpendicular to fiber.
+                        let env = exp(-fdy * fdy / twoSigmaSq)
+                        guard env > 0.01 else { continue }
+                        // Asymmetric darkening: carrier is biased to
+                        // 0…1 (mean ½) so a fiber reads as a soft,
+                        // shadowed strand rather than an equal
+                        // bright/dark fringe pair.
+                        let strand = (sin(fdx * carrierK) + 1) * 0.5
+                        let sx = ((Int(cx) + dx) % n + n) % n
+                        let sy = ((Int(cy) + dy) % n + n) % n
+                        let idx = sy * n + sx
+                        base[idx] = max(0, base[idx] - amplitude * env * strand)
+                    }
+                }
+            }
+        }
+
+        // 3. Perlin surface roughness
+        let roughness = max(0, min(1, config.surfaceRoughness))
+        if roughness > 0.001 {
+            let surface = perlinSurfaceNoise(
+                size: n,
+                seed: preset.seed &+ 0x7E3D_A1B8_C9F0_5246,
+                scale: adjustments.scale,
+                backingFactor: backingFactor
+            )
+            for i in 0..<base.count {
+                // Roughness is a paper-to-screen veil, not a light source:
+                // retain only the non-positive half of the signed field so
+                // v3 can never brighten a pixel relative to v2.
+                let darkening = min(0, surface[i]) * roughness * 0.35
+                base[i] = max(0, base[i] + darkening)
+            }
+        }
+
+        return base
+    }
+
+    /// Multi-octave tileable Perlin-style value noise for surface
+    /// roughness. Uses Hermite interpolation (smootherstep) on a
+    /// coarse random grid, toroidally wrapped so the result tiles
+    /// seamlessly. Four octaves at ratios 1:½:¼:⅛ give a good
+    /// balance between broad undulation and fine grain.
+    private static func perlinSurfaceNoise(
+        size: Int,
+        seed: UInt64,
+        scale: Double,
+        backingFactor: Int
+    ) -> [Float] {
+        let scaleF = max(0.25, Float(scale))
+        var rng = SplitMix64(seed: seed)
+        var out = [Float](repeating: 0, count: size * size)
+        let factor = max(1, Int(backingFactor))
+        let octaves: [(cell: Int, weight: Float)] = [
+            (max(1, Int((4 * scaleF * Float(factor)).rounded())), 0.40),
+            (max(1, Int((8 * scaleF * Float(factor)).rounded())), 0.30),
+            (max(1, Int((16 * scaleF * Float(factor)).rounded())), 0.20),
+            (max(1, Int((32 * scaleF * Float(factor)).rounded())), 0.10),
+        ]
+        let totalWeight = octaves.reduce(Float(0)) { $0 + $1.weight }
+        for octave in octaves {
+            let cell = octave.cell
+            let g = max(1, size / cell)
+            var grid = [Float](repeating: 0, count: g * g)
+            for i in 0..<grid.count { grid[i] = rng.unitFloat() * 2 - 1 }
+            let w = octave.weight / totalWeight
+            for y in 0..<size {
+                let fy = Float(y) / Float(cell)
+                let y0 = Int(fy) % g
+                let y1 = (y0 + 1) % g
+                let ty = fy - Float(Int(fy))
+                let sy = ty * ty * (3 - 2 * ty)
+                for x in 0..<size {
+                    let fx = Float(x) / Float(cell)
+                    let x0 = Int(fx) % g
+                    let x1 = (x0 + 1) % g
+                    let tx = fx - Float(Int(fx))
+                    let sx = tx * tx * (3 - 2 * tx)
+                    let a = grid[y0 * g + x0]
+                    let b = grid[y0 * g + x1]
+                    let c = grid[y1 * g + x0]
+                    let d = grid[y1 * g + x1]
+                    let top = a + (b - a) * sx
+                    let bottom = c + (d - c) * sx
+                    out[y * size + x] += (top + (bottom - top) * sy) * w
+                }
+            }
+        }
+        return out
     }
 
     /// Lazily created, permanently retained FFT setups, keyed by size — the

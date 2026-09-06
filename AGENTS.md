@@ -63,9 +63,10 @@ Before shipping a code change, run `swift test`. For release-sensitive changes, 
 
 - Renderer versions are a compatibility boundary:
   - `.legacy` must remain byte-compatible for version-less historical custom papers.
-  - `.spectral` is used by built-ins and newly created papers.
+  - `.spectral` remains available for v2 custom papers and compatibility fixtures.
+  - `.spectralPlus` (v3) is used by all built-in presets and newly created papers; it layers darkening oriented-fiber bundles (Gabor-modulated) and Perlin surface roughness over the v2 spectrum.
 - Stable seeds must round-trip through JSON. Never use Swift `hashValue` for deterministic output.
-- Preserve Hermitian symmetry, inverse-FFT normalization, seamless wrapping, and backing-scale behavior in the spectral engine.
+- Preserve Hermitian symmetry, inverse-FFT normalization, seamless wrapping, and backing-scale behavior in the spectral engine. The v3 pass builds on `spectralField` unchanged; it only darkens the resulting field, so it inherits these invariants.
 - Renderer caches are bounded LRUs and intentionally main-thread-only. Do not call them concurrently without redesigning synchronization.
 - Cache keys must include every render-relevant input and exclude irrelevant metadata such as a paper name.
 - Avoid uncached 2x spectral rendering directly in a parent SwiftUI body that observes unrelated state. Isolate expensive thumbnails in equatable child views, use 1x while dragging, and debounce full overlay pushes.
