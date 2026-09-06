@@ -128,6 +128,24 @@ final class PaperComfortTests: XCTestCase {
         XCTAssertEqual(eval1.grade, eval2.grade)
     }
 
+    func testV3PaperReportsFiberLoadAndLegacyDoesNot() {
+        let v3 = CustomPaper(engineVersion: .spectralPlus, fiberStrength: 0.55)
+        let comfortV3 = PaperComfort.evaluate(paper: v3, intensity: 0.30)
+        XCTAssertEqual(comfortV3.fiberLoad, 0.55, accuracy: 1e-6)
+
+        let v2 = CustomPaper(engineVersion: .spectral)
+        let comfortV2 = PaperComfort.evaluate(paper: v2, intensity: 0.30)
+        XCTAssertEqual(comfortV2.fiberLoad, 0, accuracy: 1e-9)
+    }
+
+    func testV3FiberLoadClampsNegativeImportedStrength() {
+        // Imported JSON is untrusted; a negative fiberStrength must clamp
+        // to 0 instead of reporting a negative load.
+        let paper = CustomPaper(engineVersion: .spectralPlus, fiberStrength: -0.5)
+        let comfort = PaperComfort.evaluate(paper: paper, intensity: 0.30)
+        XCTAssertEqual(comfort.fiberLoad, 0, accuracy: 1e-9)
+    }
+
     func testComfortRecipePreservesIdentityAndAppliesVisuals() {
         var paper = CustomPaper(
             id: "custom-special-id-123",

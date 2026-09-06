@@ -30,7 +30,16 @@ struct HeroCardView: View {
         } else {
             statusString = "PAUSED"
         }
-        return "ENGINE V2 • \(activeDisplaysSummary) • \(statusString)"
+        let engineLabel: String
+        switch state.texture.engineVersion {
+        case .legacy:
+            engineLabel = "ENGINE V1"
+        case .spectral:
+            engineLabel = "ENGINE V2"
+        case .spectralPlus:
+            engineLabel = "ENGINE V3"
+        }
+        return "\(engineLabel) • \(activeDisplaysSummary) • \(statusString)"
     }
 
     var body: some View {

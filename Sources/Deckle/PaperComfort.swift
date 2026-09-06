@@ -18,6 +18,8 @@ struct PaperComfort: Equatable {
     let temperature: Double
     /// Combined structural prominence of weave and blotch patterns, 0…1.
     let patternLoad: Double
+    /// v3 fiber-bundle density, 0…1. Zero for legacy/spectral papers.
+    let fiberLoad: Double
 
     enum Grade: String, Equatable {
         case excellent = "Excellent retention"
@@ -99,6 +101,9 @@ struct PaperComfort: Equatable {
         }
 
         let patternLoad = min(1.0, 0.7 * (weave / 0.35) + 0.3 * (blotch / 0.40))
+        let fiberLoad = paper.engineVersion == .spectralPlus
+            ? min(1.0, max(0, Double(paper.fiberStrength)))
+            : 0
 
         // Grade the contrast retained relative to a bare screen's 21:1
         // white-on-black baseline. Absolute WCAG thresholds are not useful
@@ -122,6 +127,7 @@ struct PaperComfort: Equatable {
             blueReduction: blueReduction,
             temperature: temperature,
             patternLoad: patternLoad,
+            fiberLoad: fiberLoad,
             grade: grade
         )
     }

@@ -102,7 +102,10 @@ struct ModernPresetCard: View {
                         weave: Double(preset.weave?.amplitude ?? 0),
                         blotch: Double(preset.octaves.first(where: { $0.cell == 16 })?.weight ?? 0),
                         engineVersion: preset.engineVersion,
-                        seed: preset.seed
+                        seed: preset.seed,
+                        fiberAngle: preset.v3Config?.fiberAngle ?? 0.3,
+                        fiberStrength: preset.v3Config?.fiberStrength ?? 0.30,
+                        surfaceRoughness: preset.v3Config?.surfaceRoughness ?? 0.15
                     )
                     if let onOpenMill {
                         onOpenMill(duplicate, true)

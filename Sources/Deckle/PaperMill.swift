@@ -18,14 +18,23 @@ struct CustomPaper: Codable, Equatable, Identifiable {
     /// Coarse mottling mixed into the grain.
     var blotch: Double = 0
     /// Procedural engine used to render this paper. Freshly created papers
-    /// use the v2 spectral engine; papers saved before this field existed
+    /// use the v3 spectral+ engine; papers saved before this field existed
     /// decode as `.legacy` so they keep rendering with the original
     /// generator, unchanged.
-    var engineVersion: TextureEngineVersion = .spectral
+    var engineVersion: TextureEngineVersion = .spectralPlus
     /// Stable per-paper RNG seed. Generated once when the paper is created
     /// and stored from then on (it round-trips through export/import)
     /// rather than being recomputed on every render.
     var seed: UInt64 = .random(in: .min ... .max)
+
+    // MARK: - v3 (spectral+) parameters
+
+    /// Dominant fiber orientation in radians (0 = horizontal, π/2 = vertical).
+    var fiberAngle: Float = 0.3
+    /// How strongly oriented fibers modulate the grain field, 0…1.
+    var fiberStrength: Float = 0.30
+    /// Perlin surface roughness mixed into the field, 0…1.
+    var surfaceRoughness: Float = 0.15
 
     var isDark: Bool {
         0.299 * tintRed + 0.587 * tintGreen + 0.114 * tintBlue < 0.5
@@ -40,8 +49,11 @@ struct CustomPaper: Codable, Equatable, Identifiable {
         wash: Double = 0.38,
         weave: Double = 0,
         blotch: Double = 0,
-        engineVersion: TextureEngineVersion = .spectral,
-        seed: UInt64 = .random(in: .min ... .max)
+        engineVersion: TextureEngineVersion = .spectralPlus,
+        seed: UInt64 = .random(in: .min ... .max),
+        fiberAngle: Float = 0.3,
+        fiberStrength: Float = 0.30,
+        surfaceRoughness: Float = 0.15
     ) {
         self.id = id
         self.name = name
@@ -53,10 +65,14 @@ struct CustomPaper: Codable, Equatable, Identifiable {
         self.blotch = blotch
         self.engineVersion = engineVersion
         self.seed = seed
+        self.fiberAngle = fiberAngle
+        self.fiberStrength = fiberStrength
+        self.surfaceRoughness = surfaceRoughness
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, tintRed, tintGreen, tintBlue, wash, weave, blotch, engineVersion, seed
+        case fiberAngle, fiberStrength, surfaceRoughness
     }
 
     init(from decoder: Decoder) throws {
@@ -75,6 +91,11 @@ struct CustomPaper: Codable, Equatable, Identifiable {
         // Seed-less saves predate stored seeds: derive one deterministically
         // from the paper's id so re-imports keep reproducing the same grain.
         seed = try container.decodeIfPresent(UInt64.self, forKey: .seed) ?? CustomPaper.legacySeed(from: id)
+        // v3 parameters: default to zero (no fibers, no roughness) for
+        // papers that predate v3.
+        fiberAngle = try container.decodeIfPresent(Float.self, forKey: .fiberAngle) ?? 0
+        fiberStrength = try container.decodeIfPresent(Float.self, forKey: .fiberStrength) ?? 0
+        surfaceRoughness = try container.decodeIfPresent(Float.self, forKey: .surfaceRoughness) ?? 0
     }
 
     func encode(to encoder: Encoder) throws {
@@ -89,6 +110,9 @@ struct CustomPaper: Codable, Equatable, Identifiable {
         try container.encode(blotch, forKey: .blotch)
         try container.encode(engineVersion, forKey: .engineVersion)
         try container.encode(seed, forKey: .seed)
+        try container.encode(fiberAngle, forKey: .fiberAngle)
+        try container.encode(fiberStrength, forKey: .fiberStrength)
+        try container.encode(surfaceRoughness, forKey: .surfaceRoughness)
     }
 
     /// djb2 hash — deterministic across launches, so a legacy paper decoded
@@ -139,7 +163,14 @@ extension TexturePreset {
             weave: weave > 0.01 ? (period: 8, amplitude: Float(weave)) : nil,
             isDark: dark,
             engineVersion: paper.engineVersion,
-            seed: paper.seed
+            seed: paper.seed,
+            v3Config: paper.engineVersion == .spectralPlus
+                ? TextureEngineConfig(
+                    fiberAngle: Float(clamp(Double(paper.fiberAngle), 0...(Double.pi / 2))),
+                    fiberStrength: Float(clamp(Double(paper.fiberStrength), 0...1)),
+                    surfaceRoughness: Float(clamp(Double(paper.surfaceRoughness), 0...1))
+                )
+                : nil
         )
     }
 }
@@ -354,6 +385,12 @@ private struct PaperMillView: View {
                 labeledSlider("Weave", value: $draft.weave, range: 0...0.35)
                 labeledSlider("Blotch", value: $draft.blotch, range: 0...0.40)
 
+                if draft.engineVersion == .spectralPlus {
+                    labeledSlider("Fiber Strength", value: fiberStrengthBinding, range: 0...1)
+                    angleSlider("Fiber Angle", value: fiberAngleBinding)
+                    labeledSlider("Surface Roughness", value: surfaceRoughnessBinding, range: 0...1)
+                }
+
                 // 6. Eye Comfort Evaluation Card
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -384,6 +421,7 @@ private struct PaperMillView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             comfortMetric(label: "Tint Temp", value: "\(Int(comfort.temperature.rounded())) K (\(temperatureDescription))")
                             comfortMetric(label: "Pattern Load", value: "\(Int((comfort.patternLoad * 100).rounded()))%")
+                            comfortMetric(label: "Fiber Load", value: "\(Int((comfort.fiberLoad * 100).rounded()))%")
                             comfortMetric(label: "Veil Alpha", value: "\(Int((comfort.veil * 100).rounded()))%")
                         }
                     }
@@ -532,6 +570,27 @@ private struct PaperMillView: View {
         )
     }
 
+    private var fiberStrengthBinding: Binding<Double> {
+        Binding(
+            get: { Double(draft.fiberStrength) },
+            set: { draft.fiberStrength = Float($0) }
+        )
+    }
+
+    private var fiberAngleBinding: Binding<Double> {
+        Binding(
+            get: { Double(draft.fiberAngle) },
+            set: { draft.fiberAngle = Float($0) }
+        )
+    }
+
+    private var surfaceRoughnessBinding: Binding<Double> {
+        Binding(
+            get: { Double(draft.surfaceRoughness) },
+            set: { draft.surfaceRoughness = Float($0) }
+        )
+    }
+
     private func labeledSlider(
         _ label: String,
         value: Binding<Double>,
@@ -543,6 +602,21 @@ private struct PaperMillView: View {
                 .frame(width: 48, alignment: .leading)
             Slider(value: value, in: range)
             Text("\(Int(value.wrappedValue * 100))%")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 38, alignment: .trailing)
+        }
+    }
+
+    /// Fiber angle slider showing degrees (0…90°) instead of percent.
+    private func angleSlider(_ label: String, value: Binding<Double>) -> some View {
+        HStack {
+            Text(label)
+                .font(.caption)
+                .frame(width: 48, alignment: .leading)
+            Slider(value: value, in: 0...(Double.pi / 2))
+            Text("\(Int((value.wrappedValue * 180 / .pi).rounded()))°")
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)

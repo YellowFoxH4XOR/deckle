@@ -10,11 +10,37 @@ import AppKit
 /// Which procedural engine renders a preset's grain. `.legacy` preserves the
 /// original per-pixel value-noise generator byte-for-byte so version-less
 /// saved/exported custom papers keep rendering exactly as they always have;
-/// `.spectral` is the newer deterministic engine used by every built-in and
-/// every freshly created custom paper.
+/// `.spectral` is retained for v2 custom papers and compatibility fixtures;
+/// `.spectralPlus` is the current engine used by built-ins and new papers.
 enum TextureEngineVersion: Int, Codable {
     case legacy = 1
     case spectral = 2
+    /// Advanced spectral+ engine: oriented fiber bundles, Gabor-modulated
+    /// grain, and Perlin surface roughness layered over the v2 spectrum.
+    case spectralPlus = 3
+}
+
+/// Parameters specific to the v3 (spectral+) engine. Carried alongside
+/// every preset so cache keys and the renderer can reach them without
+/// side-channel lookup. The values are intentionally a flat struct —
+/// no nesting, no optionals — so cache-key hashing stays trivial.
+struct TextureEngineConfig: Equatable {
+    /// Dominant fiber orientation in radians (0 = horizontal, π/2 = vertical).
+    var fiberAngle: Float = 0.3
+    /// How strongly oriented fibers modulate the grain field, 0…1.
+    var fiberStrength: Float = 0.30
+    /// Perlin surface roughness mixed into the field, 0…1.
+    var surfaceRoughness: Float = 0.15
+
+    static let `default` = TextureEngineConfig()
+
+    /// Cache-key fragment covering every render-relevant v3 parameter.
+    /// Uses exact Float bit patterns: the renderer consumes full-precision
+    /// values, so decimal rounding (e.g. %.3f) would let sub-0.001 changes
+    /// collide on one cache entry and produce stale tiles.
+    var cacheKey: String {
+        "v3|fa\(fiberAngle.bitPattern)|fs\(fiberStrength.bitPattern)|sr\(surfaceRoughness.bitPattern)"
+    }
 }
 
 struct TexturePreset: Identifiable, Equatable {
@@ -51,6 +77,9 @@ struct TexturePreset: Identifiable, Equatable {
     /// Per-preset RNG seed feeding the grain field.
     let seed: UInt64
 
+    /// v3 engine configuration. `nil` for legacy/spectral presets.
+    let v3Config: TextureEngineConfig?
+
     init(
         id: String,
         name: String,
@@ -64,8 +93,9 @@ struct TexturePreset: Identifiable, Equatable {
         octaves: [(cell: Int, weight: Float)],
         weave: (period: Int, amplitude: Float)?,
         isDark: Bool,
-        engineVersion: TextureEngineVersion = .spectral,
-        seed: UInt64 = 0
+        engineVersion: TextureEngineVersion = .spectralPlus,
+        seed: UInt64 = 0,
+        v3Config: TextureEngineConfig? = nil
     ) {
         self.id = id
         self.name = name
@@ -81,6 +111,54 @@ struct TexturePreset: Identifiable, Equatable {
         self.isDark = isDark
         self.engineVersion = engineVersion
         self.seed = seed
+        self.v3Config = engineVersion == .spectralPlus
+            ? (v3Config ?? .default)
+            : v3Config
+    }
+
+    /// Creates a v2 variant of a preset without changing its identity,
+    /// colors, grain structure, or seed. Used for compatibility comparisons.
+    init(v2 base: TexturePreset) {
+        self.init(
+            id: base.id,
+            name: base.name,
+            subtitle: base.subtitle,
+            tint: base.tint,
+            tintAlpha: base.tintAlpha,
+            darkColor: base.darkColor,
+            lightColor: base.lightColor,
+            darkStrength: base.darkStrength,
+            lightStrength: base.lightStrength,
+            octaves: base.octaves,
+            weave: base.weave,
+            isDark: base.isDark,
+            engineVersion: .spectral,
+            seed: base.seed,
+            v3Config: nil
+        )
+    }
+
+    /// Creates a v3 (spectral+) variant of an existing v2 preset by
+    /// replacing its engine version and attaching v3 config while
+    /// preserving every other field (tint, octaves, seed, …).
+    init(v2 base: TexturePreset, v3Config: TextureEngineConfig) {
+        self.init(
+            id: base.id,
+            name: base.name,
+            subtitle: base.subtitle,
+            tint: base.tint,
+            tintAlpha: base.tintAlpha,
+            darkColor: base.darkColor,
+            lightColor: base.lightColor,
+            darkStrength: base.darkStrength,
+            lightStrength: base.lightStrength,
+            octaves: base.octaves,
+            weave: base.weave,
+            isDark: base.isDark,
+            engineVersion: .spectralPlus,
+            seed: base.seed,
+            v3Config: v3Config
+        )
     }
 
     static func == (lhs: TexturePreset, rhs: TexturePreset) -> Bool {
@@ -93,8 +171,9 @@ struct TexturePreset: Identifiable, Equatable {
     /// generated field across presets (or edits) that only differ in color.
     var grainSignature: String {
         var signature = "v\(engineVersion.rawValue)|seed\(seed)"
-        signature += "|" + octaves.map { "\($0.cell):\($0.weight)" }.joined(separator: ",")
-        if let weave { signature += "|w\(weave.period):\(weave.amplitude)" }
+        signature += "|" + octaves.map { "\($0.cell):\($0.weight.bitPattern)" }.joined(separator: ",")
+        if let weave { signature += "|w\(weave.period):\(weave.amplitude.bitPattern)" }
+        if let config = v3Config { signature += "|\(config.cacheKey)" }
         return signature
     }
 
@@ -102,15 +181,19 @@ struct TexturePreset: Identifiable, Equatable {
     /// Built-ins are immutable so this is effectively their id; custom papers
     /// reuse their id across edits, so parameters must participate.
     var cacheSignature: String {
-        var signature = "\(id)|\(tintAlpha)|\(darkStrength)|\(lightStrength)"
+        func bits(_ value: CGFloat) -> UInt64 {
+            Double(value).bitPattern
+        }
+
+        var signature = "\(id)|ta\(bits(tintAlpha))|ds\(darkStrength.bitPattern)|ls\(lightStrength.bitPattern)"
         if let tint = tint.usingColorSpace(.sRGB) {
-            signature += String(format: "|t%.3f,%.3f,%.3f", tint.redComponent, tint.greenComponent, tint.blueComponent)
+            signature += "|t\(bits(tint.redComponent)),\(bits(tint.greenComponent)),\(bits(tint.blueComponent))"
         }
         if let dark = darkColor.usingColorSpace(.sRGB) {
-            signature += String(format: "|d%.3f,%.3f,%.3f", dark.redComponent, dark.greenComponent, dark.blueComponent)
+            signature += "|d\(bits(dark.redComponent)),\(bits(dark.greenComponent)),\(bits(dark.blueComponent))"
         }
         if let light = lightColor.usingColorSpace(.sRGB) {
-            signature += String(format: "|l%.3f,%.3f,%.3f", light.redComponent, light.greenComponent, light.blueComponent)
+            signature += "|l\(bits(light.redComponent)),\(bits(light.greenComponent)),\(bits(light.blueComponent))"
         }
         signature += "|" + grainSignature
         return signature
@@ -379,6 +462,75 @@ struct TexturePreset: Identifiable, Equatable {
             octaves: [(1, 0.40), (2, 0.30), (4, 0.30)],
             weave: nil,
             isDark: true
+        ),
+        // MARK: Spectral+ (v3) — oriented fiber, surface roughness
+        TexturePreset(
+            id: "gesso-ground",
+            name: "Gesso Ground",
+            subtitle: "Sized artist's ground, matte fiber veil",
+            tint: NSColor(srgbRed: 0.86, green: 0.84, blue: 0.79, alpha: 1),
+            tintAlpha: 0.48,
+            darkColor: NSColor(srgbRed: 0.38, green: 0.35, blue: 0.30, alpha: 1),
+            lightColor: NSColor(srgbRed: 0.97, green: 0.96, blue: 0.93, alpha: 1),
+            darkStrength: 0.45,
+            lightStrength: 0.25,
+            octaves: [(1, 0.35), (2, 0.35), (4, 0.30)],
+            weave: nil,
+            isDark: false,
+            engineVersion: .spectralPlus,
+            seed: 0x9E3779B97F4A7C15,
+            v3Config: TextureEngineConfig(fiberAngle: 0.9, fiberStrength: 0.45, surfaceRoughness: 0.20)
+        ),
+        TexturePreset(
+            id: "linen-veil",
+            name: "Linen Veil",
+            subtitle: "Cool blue-gray with woven fiber alignment",
+            tint: NSColor(srgbRed: 0.80, green: 0.83, blue: 0.86, alpha: 1),
+            tintAlpha: 0.50,
+            darkColor: NSColor(srgbRed: 0.32, green: 0.36, blue: 0.42, alpha: 1),
+            lightColor: NSColor(srgbRed: 0.96, green: 0.97, blue: 0.98, alpha: 1),
+            darkStrength: 0.40,
+            lightStrength: 0.20,
+            octaves: [(1, 0.30), (2, 0.30), (4, 0.40)],
+            weave: nil,
+            isDark: false,
+            engineVersion: .spectralPlus,
+            seed: 0xBF58476D1CE4E5B9,
+            v3Config: TextureEngineConfig(fiberAngle: 1.57, fiberStrength: 0.50, surfaceRoughness: 0.15)
+        ),
+        TexturePreset(
+            id: "parchment-grain",
+            name: "Parchment Grain",
+            subtitle: "Warm parchment with coarse tooth",
+            tint: NSColor(srgbRed: 0.84, green: 0.74, blue: 0.58, alpha: 1),
+            tintAlpha: 0.52,
+            darkColor: NSColor(srgbRed: 0.40, green: 0.32, blue: 0.20, alpha: 1),
+            lightColor: NSColor(srgbRed: 0.96, green: 0.91, blue: 0.80, alpha: 1),
+            darkStrength: 0.50,
+            lightStrength: 0.20,
+            octaves: [(1, 0.30), (2, 0.25), (4, 0.25), (16, 0.20)],
+            weave: nil,
+            isDark: false,
+            engineVersion: .spectralPlus,
+            seed: 0x94D049BB133111EB,
+            v3Config: TextureEngineConfig(fiberAngle: 0.35, fiberStrength: 0.35, surfaceRoughness: 0.35)
+        ),
+        TexturePreset(
+            id: "slate-veil",
+            name: "Slate Veil",
+            subtitle: "Deep slate with visible fiber strands",
+            tint: NSColor(srgbRed: 0.16, green: 0.18, blue: 0.22, alpha: 1),
+            tintAlpha: 0.45,
+            darkColor: NSColor(srgbRed: 0.05, green: 0.06, blue: 0.08, alpha: 1),
+            lightColor: NSColor(srgbRed: 0.55, green: 0.60, blue: 0.68, alpha: 1),
+            darkStrength: 0.35,
+            lightStrength: 0.30,
+            octaves: [(1, 0.40), (2, 0.30), (4, 0.30)],
+            weave: nil,
+            isDark: true,
+            engineVersion: .spectralPlus,
+            seed: 0xA5B9C4E3D2F10678,
+            v3Config: TextureEngineConfig(fiberAngle: 1.1, fiberStrength: 0.40, surfaceRoughness: 0.25)
         ),
     ]
 }

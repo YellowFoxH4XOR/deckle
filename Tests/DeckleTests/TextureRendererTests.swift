@@ -99,7 +99,7 @@ final class TextureRendererTests: XCTestCase {
 
     func testNewCustomPaperIsSpectralAndRoundTripsVersionAndSeed() throws {
         let paper = CustomPaper()
-        XCTAssertEqual(paper.engineVersion, .spectral, "freshly created papers must default to the v2 engine")
+        XCTAssertEqual(paper.engineVersion, .spectralPlus, "freshly created papers must default to the v3 spectral+ engine")
 
         let data = try JSONEncoder().encode(paper)
         let decoded = try JSONDecoder().decode(CustomPaper.self, from: data)
@@ -111,12 +111,17 @@ final class TextureRendererTests: XCTestCase {
 
     // MARK: - Built-in engine-version contract
 
-    func testBuiltInClassicMatteIsSpectral() {
+    func testBuiltInClassicMatteUsesSpectralPlus() {
         let preset = TexturePreset.preset(id: "classic-matte")
         XCTAssertEqual(
-            preset.engineVersion, .spectral,
-            "every built-in preset renders through the v2 spectral engine; only version-less decoded CustomPaper stays on legacy"
+            preset.engineVersion, .spectralPlus,
+            "built-in presets use the v3 spectral+ engine; stored v2 and legacy CustomPaper values remain compatible"
         )
+        XCTAssertNotNil(preset.v3Config)
+    }
+
+    func testEveryBuiltInUsesSpectralPlus() {
+        XCTAssertTrue(TexturePreset.all.allSatisfy { $0.engineVersion == .spectralPlus })
     }
 
     // MARK: - Legacy (v1) byte fidelity
@@ -287,5 +292,217 @@ final class TextureRendererTests: XCTestCase {
             "the most recently rendered preset must still be cached"
         )
         XCTAssertEqual(afterLastReplay.tileMisses, beforeLastReplay.tileMisses)
+    }
+
+    // MARK: - Spectral+ (v3) engine
+
+    /// v3 preset with a tiny tile so tests are fast.
+    private func v3Preset(id: String, seed: UInt64) -> TexturePreset {
+        TexturePreset(
+            id: id,
+            name: "v3 Test",
+            subtitle: "",
+            tint: NSColor(srgbRed: 0.9, green: 0.88, blue: 0.84, alpha: 1),
+            tintAlpha: 0.42,
+            darkColor: NSColor(srgbRed: 0.38, green: 0.35, blue: 0.30, alpha: 1),
+            lightColor: NSColor(srgbRed: 0.97, green: 0.96, blue: 0.93, alpha: 1),
+            darkStrength: 0.45,
+            lightStrength: 0.25,
+            octaves: [(1, 0.35), (2, 0.35), (4, 0.30)],
+            weave: nil,
+            isDark: false,
+            engineVersion: .spectralPlus,
+            seed: seed,
+            v3Config: TextureEngineConfig(fiberAngle: 0.9, fiberStrength: 0.45, surfaceRoughness: 0.20)
+        )
+    }
+
+    func testV3SameSeedProducesIdenticalBytes() {
+        let a = v3Preset(id: "v3-a", seed: 42)
+        let b = v3Preset(id: "v3-b", seed: 42)
+
+        XCTAssertEqual(
+            rawPixelBytes(TextureRenderer.tile(for: a, cached: false)),
+            rawPixelBytes(TextureRenderer.tile(for: b, cached: false)),
+            "same seed must produce byte-identical v3 grain regardless of preset id"
+        )
+    }
+
+    func testV3DifferentSeedProducesDifferentBytes() {
+        let a = v3Preset(id: "v3-a", seed: 42)
+        let b = v3Preset(id: "v3-b", seed: 99)
+
+        XCTAssertNotEqual(
+            rawPixelBytes(TextureRenderer.tile(for: a, cached: false)),
+            rawPixelBytes(TextureRenderer.tile(for: b, cached: false)),
+            "different seeds must produce distinct v3 grain"
+        )
+    }
+
+    func testV3FiberAngleChangesGrain() {
+        let horizontal = TexturePreset(v2: v3Preset(id: "v3-h", seed: 7), v3Config: TextureEngineConfig(fiberAngle: 0, fiberStrength: 0.5, surfaceRoughness: 0))
+        let vertical = TexturePreset(v2: v3Preset(id: "v3-v", seed: 7), v3Config: TextureEngineConfig(fiberAngle: 1.57, fiberStrength: 0.5, surfaceRoughness: 0))
+
+        XCTAssertNotEqual(
+            rawPixelBytes(TextureRenderer.tile(for: horizontal, cached: false)),
+            rawPixelBytes(TextureRenderer.tile(for: vertical, cached: false)),
+            "fiber angle must change the rendered v3 grain"
+        )
+    }
+
+    func testV3FieldIsDeterministicAcrossCacheModes() {
+        let preset = v3Preset(id: "v3-cache", seed: 5)
+
+        let uncached = TextureRenderer.tile(for: preset, cached: false)
+        let cached = TextureRenderer.tile(for: preset, cached: true)
+
+        XCTAssertEqual(
+            rawPixelBytes(uncached),
+            rawPixelBytes(cached),
+            "cached and uncached v3 renders must be identical"
+        )
+    }
+
+    func testV3CacheKeyDistinguishesSubMilliParameterChanges() {
+        // The cache key must use lossless Float bits — decimal rounding
+        // would let sub-0.001 slider changes collide on one entry.
+        let a = v3Preset(id: "v3-fine", seed: 9)
+        let b = TexturePreset(
+            v2: a,
+            v3Config: TextureEngineConfig(
+                fiberAngle: a.v3Config!.fiberAngle + 0.0001,
+                fiberStrength: a.v3Config!.fiberStrength,
+                surfaceRoughness: a.v3Config!.surfaceRoughness
+            )
+        )
+        XCTAssertNotEqual(a.cacheSignature, b.cacheSignature, "cache signatures must differ for sub-0.001 parameter changes")
+
+        let bytesA = rawPixelBytes(TextureRenderer.tile(for: a, cached: false))
+        let bytesB = rawPixelBytes(TextureRenderer.tile(for: b, cached: false))
+        XCTAssertNotEqual(bytesA, bytesB, "sub-0.001 parameter changes must render distinct tiles")
+    }
+
+    func testAdjustmentCacheKeyDistinguishesSubCentChanges() {
+        let preset = v3Preset(id: "adjustment-cache", seed: 17)
+        let first = TextureRenderer.GrainAdjustments(scale: 1.001, strength: 1.001)
+        let second = TextureRenderer.GrainAdjustments(scale: 1.004, strength: 1.004)
+
+        XCTAssertNotEqual(first.cacheKey, second.cacheKey)
+        let firstBytes = rawPixelBytes(TextureRenderer.tile(for: preset, adjustments: first))
+        let before = TextureRenderer.cacheMetrics
+        let secondBytes = rawPixelBytes(TextureRenderer.tile(for: preset, adjustments: second))
+        let after = TextureRenderer.cacheMetrics
+
+        XCTAssertEqual(after.tileMisses, before.tileMisses + 1, "distinct adjustment values must not reuse a tile cache entry")
+        XCTAssertNotEqual(firstBytes, secondBytes, "sub-cent adjustment changes must affect rendered pixels")
+    }
+
+    func testColorAndStrengthCacheKeysAreLossless() {
+        let base = v3Preset(id: "numeric-cache", seed: 23)
+        let strengthChanged = TexturePreset(
+            id: base.id,
+            name: base.name,
+            subtitle: base.subtitle,
+            tint: base.tint,
+            tintAlpha: base.tintAlpha,
+            darkColor: base.darkColor,
+            lightColor: base.lightColor,
+            darkStrength: base.darkStrength + 0.0001,
+            lightStrength: base.lightStrength,
+            octaves: base.octaves,
+            weave: base.weave,
+            isDark: base.isDark,
+            engineVersion: base.engineVersion,
+            seed: base.seed,
+            v3Config: base.v3Config
+        )
+        let colorChanged = TexturePreset(
+            id: base.id,
+            name: base.name,
+            subtitle: base.subtitle,
+            tint: NSColor(srgbRed: 0.9001, green: 0.9, blue: 0.85, alpha: 1),
+            tintAlpha: base.tintAlpha,
+            darkColor: base.darkColor,
+            lightColor: base.lightColor,
+            darkStrength: base.darkStrength,
+            lightStrength: base.lightStrength,
+            octaves: base.octaves,
+            weave: base.weave,
+            isDark: base.isDark,
+            engineVersion: base.engineVersion,
+            seed: base.seed,
+            v3Config: base.v3Config
+        )
+
+        XCTAssertNotEqual(base.cacheSignature, strengthChanged.cacheSignature)
+        XCTAssertNotEqual(base.cacheSignature, colorChanged.cacheSignature)
+
+        _ = TextureRenderer.compositeTile(for: base)
+        let beforeStrength = TextureRenderer.cacheMetrics
+        _ = TextureRenderer.compositeTile(for: strengthChanged)
+        let afterStrength = TextureRenderer.cacheMetrics
+        XCTAssertEqual(afterStrength.compositeMisses, beforeStrength.compositeMisses + 1)
+
+        let beforeColor = TextureRenderer.cacheMetrics
+        _ = TextureRenderer.compositeTile(for: colorChanged)
+        let afterColor = TextureRenderer.cacheMetrics
+        XCTAssertEqual(afterColor.compositeMisses, beforeColor.compositeMisses + 1)
+    }
+
+    func testV3PresetUsesSpectralPlusEngine() {
+        let preset = TexturePreset.preset(id: "gesso-ground")
+        XCTAssertEqual(preset.engineVersion, .spectralPlus)
+        XCTAssertNotNil(preset.v3Config)
+        XCTAssertGreaterThan(preset.v3Config?.fiberStrength ?? 0, 0)
+    }
+
+    func testV3BuiltInPresetRenders() {
+        for id in ["gesso-ground", "linen-veil", "parchment-grain", "slate-veil"] {
+            let preset = TexturePreset.preset(id: id)
+            let tile = TextureRenderer.tile(for: preset, cached: false)
+            XCTAssertGreaterThan(tile.size.width, 0, "\(id) must render a non-empty tile")
+        }
+    }
+
+    func testCustomPaperV3RoundTripsFiberParameters() throws {
+        let paper = CustomPaper(
+            engineVersion: .spectralPlus,
+            fiberAngle: 0.7,
+            fiberStrength: 0.55,
+            surfaceRoughness: 0.30
+        )
+        let data = try JSONEncoder().encode(paper)
+        let decoded = try JSONDecoder().decode(CustomPaper.self, from: data)
+
+        XCTAssertEqual(decoded, paper)
+        XCTAssertEqual(decoded.fiberAngle, paper.fiberAngle)
+        XCTAssertEqual(decoded.fiberStrength, paper.fiberStrength)
+        XCTAssertEqual(decoded.surfaceRoughness, paper.surfaceRoughness)
+    }
+
+    func testV2CustomPaperDecodesWithoutFiberParameters() throws {
+        // A v2 paper exported before v3 existed must decode with zeroed
+        // fiber parameters so it keeps rendering exactly as before.
+        let json = """
+        {
+            "id": "legacy-paper",
+            "name": "Legacy",
+            "tintRed": 0.9,
+            "tintGreen": 0.85,
+            "tintBlue": 0.8,
+            "wash": 0.3,
+            "weave": 0.1,
+            "blotch": 0.2,
+            "engineVersion": 2,
+            "seed": 12345
+        }
+        """.data(using: .utf8)!
+
+        let paper = try JSONDecoder().decode(CustomPaper.self, from: json)
+
+        XCTAssertEqual(paper.engineVersion, .spectral)
+        XCTAssertEqual(paper.fiberAngle, 0)
+        XCTAssertEqual(paper.fiberStrength, 0)
+        XCTAssertEqual(paper.surfaceRoughness, 0)
     }
 }

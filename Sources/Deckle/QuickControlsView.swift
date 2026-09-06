@@ -398,7 +398,7 @@ struct QuickControlsView: View {
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
                         .foregroundStyle(.primary)
 
-                    Text("Spectral Engine v2 · macOS 13+")
+                    Text("Spectral+ Engine v3 · macOS 13+")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
