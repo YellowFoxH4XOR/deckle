@@ -14,9 +14,13 @@ struct CustomPaper: Codable, Equatable, Identifiable {
     /// Tint wash opacity at full design strength.
     var wash: Double = 0.38
     /// Woven crosshatch amount; 0 disables the weave.
-    var weave: Double = 0
+    var weave: Double = 0 {
+        didSet { enableGrainIfEditingTexture(from: oldValue, to: weave) }
+    }
     /// Coarse mottling mixed into the grain.
-    var blotch: Double = 0
+    var blotch: Double = 0 {
+        didSet { enableGrainIfEditingTexture(from: oldValue, to: blotch) }
+    }
     /// Procedural engine used to render this paper. Freshly created papers
     /// use the v3 spectral+ engine; papers saved before this field existed
     /// decode as `.legacy` so they keep rendering with the original
@@ -32,14 +36,27 @@ struct CustomPaper: Codable, Equatable, Identifiable {
     /// Dominant fiber orientation in radians (0 = horizontal, π/2 = vertical).
     var fiberAngle: Float = 0.3
     /// How strongly oriented fibers modulate the grain field, 0…1.
-    var fiberStrength: Float = 0.30
+    var fiberStrength: Float = 0.30 {
+        didSet { enableGrainIfEditingTexture(from: oldValue, to: fiberStrength) }
+    }
     /// Perlin surface roughness mixed into the field, 0…1.
-    var surfaceRoughness: Float = 0.15
+    var surfaceRoughness: Float = 0.15 {
+        didSet { enableGrainIfEditingTexture(from: oldValue, to: surfaceRoughness) }
+    }
 
     /// Optional strengths preserve quiet built-ins when copied into Paper Mill.
     /// Missing values retain the historical custom-paper rendering exactly.
     var darkGrainStrength: Float?
     var lightGrainStrength: Float?
+
+    /// Grain-free built-ins carry explicit zero strengths when duplicated so
+    /// their initial copy remains uniform. Once a texture-producing control
+    /// changes, return to normal custom-paper strengths so the edit is visible.
+    private mutating func enableGrainIfEditingTexture<T: Equatable>(from oldValue: T, to newValue: T) {
+        guard oldValue != newValue, darkGrainStrength == 0, lightGrainStrength == 0 else { return }
+        darkGrainStrength = nil
+        lightGrainStrength = nil
+    }
 
     var isDark: Bool {
         // Classification must use the same clamped tint as the renderer.

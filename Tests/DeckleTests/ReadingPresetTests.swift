@@ -70,6 +70,82 @@ final class ReadingPresetTests: XCTestCase {
         XCTAssertEqual(imported.lightStrength, 1)
     }
 
+    func testEachTextureControlEnablesGrainInClearVeilCopies() throws {
+        let original = clearVeilCopy()
+        let edits: [(String, (inout CustomPaper) -> Void)] = [
+            ("Weave", { $0.weave = 0.35 }),
+            ("Blotch", { $0.blotch = 0.40 }),
+            ("Fiber Strength", { $0.fiberStrength = 1 }),
+            ("Surface Roughness", { $0.surfaceRoughness = 1 })
+        ]
+        for (name, edit) in edits {
+            var draft = original
+            edit(&draft)
+            XCTAssertNil(draft.darkGrainStrength, name)
+            XCTAssertNil(draft.lightGrainStrength, name)
+            XCTAssertEqual(draft.id, original.id)
+            XCTAssertEqual(draft.seed, original.seed)
+            XCTAssertEqual(draft.engineVersion, original.engineVersion)
+            let saved = try JSONDecoder().decode(CustomPaper.self, from: JSONEncoder().encode(draft))
+            XCTAssertEqual(saved, draft)
+            for scale: CGFloat in [1, 2] {
+                let before = try pixels(TexturePreset(custom: original), backingScale: scale)
+                XCTAssertNotEqual(before, try pixels(TexturePreset(custom: saved), backingScale: scale), name)
+                XCTAssertGreaterThan(try measure(TexturePreset(custom: saved), intensity: 0.22, backingScale: scale).variation,
+                                     0.000001, name)
+            }
+        }
+    }
+
+    func testNonTextureEditsAndUnchangedControlsKeepClearVeilUniform() throws {
+        var draft = clearVeilCopy()
+        draft.name = "Renamed"
+        draft.tintRed = 0.6
+        draft.wash = 0.4
+        draft.fiberAngle = 1
+        draft.weave = 0
+        draft.blotch = 0
+        draft.fiberStrength = 0
+        draft.surfaceRoughness = 0
+        let decoded = try JSONDecoder().decode(CustomPaper.self, from: JSONEncoder().encode(draft))
+        XCTAssertEqual(decoded.darkGrainStrength, 0)
+        XCTAssertEqual(decoded.lightGrainStrength, 0)
+        XCTAssertLessThan(try measure(TexturePreset(custom: decoded), intensity: 0.22).variation, 0.000001)
+    }
+
+    func testTextureEditsPreserveNonzeroAndHistoricalGrainStrengths() {
+        for strengths: (Float?, Float?) in [(nil, nil), (0.035, 0.005), (0, 0.02)] {
+            var draft = CustomPaper(seed: 17, darkGrainStrength: strengths.0, lightGrainStrength: strengths.1)
+            draft.weave = 0.35
+            draft.blotch = 0.4
+            draft.fiberStrength = 1
+            draft.surfaceRoughness = 1
+            XCTAssertEqual(draft.darkGrainStrength, strengths.0)
+            XCTAssertEqual(draft.lightGrainStrength, strengths.1)
+        }
+    }
+
+    func testTexturedStartingRecipeEnablesGrainInClearVeilCopy() throws {
+        var draft = clearVeilCopy()
+        let recipe = try XCTUnwrap(PaperComfort.recipes.first { $0.id == "paper" })
+        recipe.apply(to: &draft)
+        XCTAssertNil(draft.darkGrainStrength)
+        XCTAssertNil(draft.lightGrainStrength)
+        XCTAssertGreaterThan(try measure(TexturePreset(custom: draft), intensity: 0.22).variation, 0.000001)
+    }
+
+    private func clearVeilCopy() -> CustomPaper {
+        let preset = TexturePreset.preset(id: "clear-veil")
+        return CustomPaper(name: "Clear Veil Copy",
+                           tintRed: Double(preset.tint.redComponent),
+                           tintGreen: Double(preset.tint.greenComponent),
+                           tintBlue: Double(preset.tint.blueComponent),
+                           wash: Double(preset.tintAlpha), weave: 0, blotch: 0,
+                           engineVersion: preset.engineVersion, seed: 123,
+                           fiberAngle: 0, fiberStrength: 0, surfaceRoughness: 0,
+                           darkGrainStrength: preset.darkStrength, lightGrainStrength: preset.lightStrength)
+    }
+
     private func pixels(_ preset: TexturePreset, backingScale: CGFloat) throws -> [UInt8] {
         let image = TextureRenderer.compositeTile(for: preset, backingScale: backingScale)
         let cg = try XCTUnwrap(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
