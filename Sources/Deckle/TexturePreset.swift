@@ -206,7 +206,61 @@ struct TexturePreset: Identifiable, Equatable {
     static var light: [TexturePreset] { all.filter { !$0.isDark } }
     static var dark: [TexturePreset] { all.filter { $0.isDark } }
 
-    static let all: [TexturePreset] = [
+    /// Low-pattern alternatives for text-heavy work. These are visual design
+    /// choices, not clinical eye-strain treatments. Keep their IDs stable.
+    static let readingCollection: [TexturePreset] = [
+        TexturePreset(
+            id: "clear-veil", name: "Clear Veil",
+            subtitle: "Neutral dimming, no grain",
+            tint: NSColor(srgbRed: 0.35, green: 0.35, blue: 0.35, alpha: 1),
+            tintAlpha: 0.16,
+            darkColor: .black, lightColor: .white,
+            darkStrength: 0, lightStrength: 0,
+            octaves: [(1, 1)], weave: nil, isDark: false,
+            seed: 0x434C454152,
+            v3Config: TextureEngineConfig(fiberAngle: 0, fiberStrength: 0, surfaceRoughness: 0)
+        ),
+        TexturePreset(
+            id: "book-cream", name: "Book Cream",
+            subtitle: "Faint warmth, barely-there grain",
+            tint: NSColor(srgbRed: 0.60, green: 0.50, blue: 0.35, alpha: 1),
+            tintAlpha: 0.20,
+            darkColor: NSColor(srgbRed: 0.25, green: 0.22, blue: 0.17, alpha: 1),
+            lightColor: NSColor(srgbRed: 0.80, green: 0.77, blue: 0.70, alpha: 1),
+            darkStrength: 0.035, lightStrength: 0.005,
+            octaves: [(1, 0.85), (2, 0.15)], weave: nil, isDark: false,
+            seed: 0x424F4F4B,
+            v3Config: TextureEngineConfig(fiberAngle: 0.2, fiberStrength: 0.015, surfaceRoughness: 0.01)
+        ),
+        TexturePreset(
+            id: "quiet-gray", name: "Quiet Gray",
+            subtitle: "Balanced gray, fine quiet grain",
+            tint: NSColor(srgbRed: 0.30, green: 0.31, blue: 0.32, alpha: 1),
+            tintAlpha: 0.22,
+            darkColor: NSColor(srgbRed: 0.15, green: 0.16, blue: 0.17, alpha: 1),
+            lightColor: NSColor(srgbRed: 0.65, green: 0.66, blue: 0.67, alpha: 1),
+            darkStrength: 0.025, lightStrength: 0.003,
+            octaves: [(1, 0.9), (2, 0.1)], weave: nil, isDark: false,
+            seed: 0x47524159,
+            v3Config: TextureEngineConfig(fiberAngle: 0, fiberStrength: 0.01, surfaceRoughness: 0.005)
+        ),
+        TexturePreset(
+            id: "evening-shade", name: "Evening Shade",
+            subtitle: "Deeper dimming, minimal texture",
+            tint: NSColor(srgbRed: 0.08, green: 0.07, blue: 0.06, alpha: 1),
+            tintAlpha: 0.40,
+            darkColor: .black,
+            lightColor: NSColor(srgbRed: 0.25, green: 0.23, blue: 0.21, alpha: 1),
+            darkStrength: 0.015, lightStrength: 0.002,
+            octaves: [(1, 1)], weave: nil, isDark: true,
+            seed: 0x4556454E494E47,
+            v3Config: TextureEngineConfig(fiberAngle: 0, fiberStrength: 0.005, surfaceRoughness: 0.005)
+        )
+    ]
+
+    var isQuietReading: Bool { Self.readingCollection.contains { $0.id == id } }
+
+    static let all: [TexturePreset] = readingCollection + [
         // MARK: Light papers
         TexturePreset(
             id: "classic-matte",

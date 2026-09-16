@@ -15,11 +15,15 @@ NOTARY_PROFILE ?= deckle-notary
 # UNIVERSAL=1 builds a fat arm64+x86_64 binary (used by release CI).
 ifdef UNIVERSAL
 SWIFT_FLAGS = --arch arm64 --arch x86_64
-BINARY      = .build/apple/Products/Release/$(APP_NAME)
 else
 SWIFT_FLAGS =
-BINARY      = .build/release/$(APP_NAME)
 endif
+
+# SwiftPM's derived-data directory is toolchain-dependent (for example,
+# recent Xcode versions use `.build/out`). Ask SwiftPM for the active path
+# instead of assuming a particular layout when packaging the app.
+BIN_PATH = $(shell swift build -c release $(SWIFT_FLAGS) --show-bin-path)
+BINARY   = $(BIN_PATH)/$(APP_NAME)
 
 .PHONY: build app run install dmg notarize clean
 

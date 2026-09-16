@@ -14,9 +14,13 @@ struct CustomPaper: Codable, Equatable, Identifiable {
     /// Tint wash opacity at full design strength.
     var wash: Double = 0.38
     /// Woven crosshatch amount; 0 disables the weave.
-    var weave: Double = 0
+    var weave: Double = 0 {
+        didSet { enableGrainIfEditingTexture(from: oldValue, to: weave) }
+    }
     /// Coarse mottling mixed into the grain.
-    var blotch: Double = 0
+    var blotch: Double = 0 {
+        didSet { enableGrainIfEditingTexture(from: oldValue, to: blotch) }
+    }
     /// Procedural engine used to render this paper. Freshly created papers
     /// use the v3 spectral+ engine; papers saved before this field existed
     /// decode as `.legacy` so they keep rendering with the original
@@ -32,12 +36,33 @@ struct CustomPaper: Codable, Equatable, Identifiable {
     /// Dominant fiber orientation in radians (0 = horizontal, π/2 = vertical).
     var fiberAngle: Float = 0.3
     /// How strongly oriented fibers modulate the grain field, 0…1.
-    var fiberStrength: Float = 0.30
+    var fiberStrength: Float = 0.30 {
+        didSet { enableGrainIfEditingTexture(from: oldValue, to: fiberStrength) }
+    }
     /// Perlin surface roughness mixed into the field, 0…1.
-    var surfaceRoughness: Float = 0.15
+    var surfaceRoughness: Float = 0.15 {
+        didSet { enableGrainIfEditingTexture(from: oldValue, to: surfaceRoughness) }
+    }
+
+    /// Optional strengths preserve quiet built-ins when copied into Paper Mill.
+    /// Missing values retain the historical custom-paper rendering exactly.
+    var darkGrainStrength: Float?
+    var lightGrainStrength: Float?
+
+    /// Grain-free built-ins carry explicit zero strengths when duplicated so
+    /// their initial copy remains uniform. Once a texture-producing control
+    /// changes, return to normal custom-paper strengths so the edit is visible.
+    private mutating func enableGrainIfEditingTexture<T: Equatable>(from oldValue: T, to newValue: T) {
+        guard oldValue != newValue, darkGrainStrength == 0, lightGrainStrength == 0 else { return }
+        darkGrainStrength = nil
+        lightGrainStrength = nil
+    }
 
     var isDark: Bool {
-        0.299 * tintRed + 0.587 * tintGreen + 0.114 * tintBlue < 0.5
+        // Classification must use the same clamped tint as the renderer.
+        0.299 * min(max(tintRed, 0), 1)
+            + 0.587 * min(max(tintGreen, 0), 1)
+            + 0.114 * min(max(tintBlue, 0), 1) < 0.5
     }
 
     init(
@@ -53,7 +78,9 @@ struct CustomPaper: Codable, Equatable, Identifiable {
         seed: UInt64 = .random(in: .min ... .max),
         fiberAngle: Float = 0.3,
         fiberStrength: Float = 0.30,
-        surfaceRoughness: Float = 0.15
+        surfaceRoughness: Float = 0.15,
+        darkGrainStrength: Float? = nil,
+        lightGrainStrength: Float? = nil
     ) {
         self.id = id
         self.name = name
@@ -68,11 +95,14 @@ struct CustomPaper: Codable, Equatable, Identifiable {
         self.fiberAngle = fiberAngle
         self.fiberStrength = fiberStrength
         self.surfaceRoughness = surfaceRoughness
+        self.darkGrainStrength = darkGrainStrength
+        self.lightGrainStrength = lightGrainStrength
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, tintRed, tintGreen, tintBlue, wash, weave, blotch, engineVersion, seed
         case fiberAngle, fiberStrength, surfaceRoughness
+        case darkGrainStrength, lightGrainStrength
     }
 
     init(from decoder: Decoder) throws {
@@ -96,6 +126,8 @@ struct CustomPaper: Codable, Equatable, Identifiable {
         fiberAngle = try container.decodeIfPresent(Float.self, forKey: .fiberAngle) ?? 0
         fiberStrength = try container.decodeIfPresent(Float.self, forKey: .fiberStrength) ?? 0
         surfaceRoughness = try container.decodeIfPresent(Float.self, forKey: .surfaceRoughness) ?? 0
+        darkGrainStrength = try container.decodeIfPresent(Float.self, forKey: .darkGrainStrength)
+        lightGrainStrength = try container.decodeIfPresent(Float.self, forKey: .lightGrainStrength)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -113,6 +145,8 @@ struct CustomPaper: Codable, Equatable, Identifiable {
         try container.encode(fiberAngle, forKey: .fiberAngle)
         try container.encode(fiberStrength, forKey: .fiberStrength)
         try container.encode(surfaceRoughness, forKey: .surfaceRoughness)
+        try container.encodeIfPresent(darkGrainStrength, forKey: .darkGrainStrength)
+        try container.encodeIfPresent(lightGrainStrength, forKey: .lightGrainStrength)
     }
 
     /// djb2 hash — deterministic across launches, so a legacy paper decoded
@@ -157,8 +191,8 @@ extension TexturePreset {
             // keeps custom papers tonally coherent at any hue.
             darkColor: NSColor(srgbRed: r * 0.30, green: g * 0.28, blue: b * 0.25, alpha: 1),
             lightColor: NSColor(srgbRed: r + (1 - r) * 0.85, green: g + (1 - g) * 0.85, blue: b + (1 - b) * 0.85, alpha: 1),
-            darkStrength: dark ? 0.30 : 0.50,
-            lightStrength: dark ? 0.45 : 0.35,
+            darkStrength: paper.darkGrainStrength.map { Float(clamp(Double($0), 0...1)) } ?? (dark ? 0.30 : 0.50),
+            lightStrength: paper.lightGrainStrength.map { Float(clamp(Double($0), 0...1)) } ?? (dark ? 0.45 : 0.35),
             octaves: octaves,
             weave: weave > 0.01 ? (period: 8, amplitude: Float(weave)) : nil,
             isDark: dark,
@@ -394,7 +428,7 @@ private struct PaperMillView: View {
                 // 6. Eye Comfort Evaluation Card
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("Eye Comfort & Contrast")
+                        Text("Appearance & Contrast")
                             .font(.caption)
                             .fontWeight(.semibold)
                             .foregroundStyle(.secondary)
@@ -413,9 +447,9 @@ private struct PaperMillView: View {
 
                     HStack(spacing: 16) {
                         VStack(alignment: .leading, spacing: 3) {
-                            comfortMetric(label: "Brightness", value: "−\(Int((comfort.dimming * 100).rounded()))%")
-                            comfortMetric(label: "Contrast", value: String(format: "%.1f:1", comfort.contrastRatio))
-                            comfortMetric(label: "Blue Light", value: "−\(Int((comfort.blueReduction * 100).rounded()))%")
+                            comfortMetric(label: "Luminance", value: "−\(Int((comfort.dimming * 100).rounded()))%")
+                            comfortMetric(label: "Black/white", value: String(format: "%.1f:1", comfort.contrastRatio))
+                            comfortMetric(label: "Blue channel", value: "−\(Int((comfort.blueReduction * 100).rounded()))%")
                         }
                         Divider()
                         VStack(alignment: .leading, spacing: 3) {
@@ -425,6 +459,11 @@ private struct PaperMillView: View {
                             comfortMetric(label: "Veil Alpha", value: "\(Int((comfort.veil * 100).rounded()))%")
                         }
                     }
+
+                    Text("Tint-wash estimates only; they exclude Matte finish. Grain and actual app colors change the result. These are not eye-health scores.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     if comfort.needsContrastWarning {
                         HStack(spacing: 5) {

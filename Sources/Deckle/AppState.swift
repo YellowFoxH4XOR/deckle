@@ -45,8 +45,13 @@ final class AppState: ObservableObject {
         didSet { defaults.set(grainStrength, forKey: Keys.grainStrength) }
     }
 
+    /// Matte finish strength: neutralizes bright highlights without adding visible grain.
+    @Published var matteStrength: Double {
+        didSet { defaults.set(matteStrength, forKey: Keys.matteStrength) }
+    }
+
     var grainAdjustments: TextureRenderer.GrainAdjustments {
-        .init(scale: grainScale, strength: grainStrength)
+        .init(scale: grainScale, strength: grainStrength, matte: matteStrength)
     }
 
     // MARK: App rules
@@ -108,6 +113,58 @@ final class AppState: ObservableObject {
     /// it only ever lives as long as the editor window.
     @Published var previewPaper: CustomPaper?
 
+    /// Comparison never changes saved settings or a running snooze.
+    @Published var isComparingOriginal = false
+
+    @Published var deskSetups: [DeskSetup] {
+        didSet {
+            if let data = try? JSONEncoder().encode(deskSetups) {
+                defaults.set(data, forKey: Keys.deskSetups)
+            }
+        }
+    }
+
+    func paperExists(id: String) -> Bool {
+        TexturePreset.all.contains { $0.id == id } || customPapers.contains { $0.id == id }
+    }
+
+    func matches(_ setup: DeskSetup) -> Bool {
+        textureID == setup.textureID && abs(intensity - setup.intensity) < 0.00001
+            && grainScale == setup.grainScale && abs(grainStrength - setup.grainStrength) < 0.00001
+            && abs(matteStrength - setup.matteStrength) < 0.00001
+    }
+
+    @discardableResult
+    func apply(_ setup: DeskSetup) -> Bool {
+        guard setup.hasValidSettings, paperExists(id: setup.textureID), previewPaper == nil else { return false }
+        isComparingOriginal = false
+        textureID = setup.textureID
+        intensity = setup.intensity
+        grainScale = setup.grainScale
+        grainStrength = setup.grainStrength
+        matteStrength = setup.matteStrength
+        cancelSnooze()
+        isEnabled = true
+        return true
+    }
+
+    @discardableResult
+    func saveDeskSetup(name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, deskSetups.count < 8, previewPaper == nil else { return false }
+        let setup = DeskSetup(name: String(trimmed.prefix(32)), textureID: textureID,
+                              intensity: intensity, grainScale: grainScale, grainStrength: grainStrength,
+                              matteStrength: matteStrength)
+        guard setup.hasValidSettings, paperExists(id: textureID) else { return false }
+        deskSetups.append(setup)
+        return true
+    }
+
+    func overlayIsVisible(on displayID: String, frontmost bundleID: String?) -> Bool {
+        !excludedDisplays.contains(displayID) && !isComparingOriginal
+            && (previewPaper != nil || (shouldShowOverlay && appRuleAllows(frontmost: bundleID)))
+    }
+
     var texture: TexturePreset {
         if let custom = customPapers.first(where: { $0.id == textureID }) {
             return TexturePreset(custom: custom)
@@ -147,15 +204,18 @@ final class AppState: ObservableObject {
         static let hideFromCapture = "hideFromCapture"
         static let grainScale = "grainScale"
         static let grainStrength = "grainStrength"
+        static let matteStrength = "matteStrength"
         static let appRuleMode = "appRuleMode"
         static let ruleApps = "ruleApps"
         static let customPapers = "customPapers"
+        static let deskSetups = "deskSetups"
     }
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private var snoozeTimer: Timer?
 
-    private init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         isEnabled = defaults.object(forKey: Keys.enabled) as? Bool ?? true
         intensity = defaults.object(forKey: Keys.intensity) as? Double ?? 0.22
         textureID = defaults.string(forKey: Keys.texture) ?? TexturePreset.all[0].id
@@ -163,11 +223,22 @@ final class AppState: ObservableObject {
         hideFromCapture = defaults.bool(forKey: Keys.hideFromCapture)
         grainScale = defaults.object(forKey: Keys.grainScale) as? Double ?? 1.0
         grainStrength = defaults.object(forKey: Keys.grainStrength) as? Double ?? 1.0
+        matteStrength = defaults.object(forKey: Keys.matteStrength) as? Double ?? 0.0
         appRuleMode = AppRuleMode(rawValue: defaults.string(forKey: Keys.appRuleMode) ?? "") ?? .everywhere
         ruleApps = defaults.data(forKey: Keys.ruleApps)
             .flatMap { try? JSONDecoder().decode([RuleApp].self, from: $0) } ?? []
         customPapers = defaults.data(forKey: Keys.customPapers)
             .flatMap { try? JSONDecoder().decode([CustomPaper].self, from: $0) } ?? []
+        deskSetups = defaults.data(forKey: Keys.deskSetups)
+            .flatMap { try? JSONDecoder().decode([DeskSetup].self, from: $0) }
+            .map { Array($0.filter(\.hasValidSettings).prefix(8)) } ?? DeskSetup.starters
+
+        // Recover older preferences written by non-finite automation input.
+        intensity = intensity.isFinite ? min(max(intensity, 0.05), 0.45) : 0.22
+        grainScale = grainScale.isFinite
+            ? [0.5, 1, 2, 4].min(by: { abs($0 - grainScale) < abs($1 - grainScale) }) ?? 1 : 1
+        grainStrength = grainStrength.isFinite ? min(max(grainStrength, 0.25), 2) : 1
+        matteStrength = matteStrength.isFinite ? min(max(matteStrength, 0), 1) : 0
     }
 
     private func scheduleSnoozeExpiry() {

@@ -69,13 +69,24 @@ enum TextureRenderer {
     struct GrainAdjustments: Equatable {
         var scale: Double = 1.0
         var strength: Double = 1.0
+        var matte: Double = 0.0
 
         static let none = GrainAdjustments()
-        /// Exact bit-pattern key: the renderer consumes full-precision
-        /// adjustments, so decimal rounding would return stale tiles for
-        /// sub-step slider changes.
+        /// Key for the synthesized noise field. Only scale changes its shape.
+        var fieldCacheKey: String {
+            "s\(scale.bitPattern)"
+        }
+
+        /// Key for the translucent grain tile. Strength changes pixel alpha,
+        /// but matte only affects the later tint composite.
+        var tileCacheKey: String {
+            "\(fieldCacheKey)-k\(strength.bitPattern)"
+        }
+
+        /// Key for the final overlay tile, including the tint-only matte pass.
+        /// Exact bit patterns prevent stale output for sub-step changes.
         var cacheKey: String {
-            "s\(scale.bitPattern)-k\(strength.bitPattern)"
+            "\(tileCacheKey)-m\(matte.bitPattern)"
         }
     }
 
@@ -98,7 +109,7 @@ enum TextureRenderer {
         cached: Bool = true
     ) -> NSImage {
         let scale = normalizedScale(backingScale)
-        let key = "\(preset.cacheSignature)|\(adjustments.cacheKey)|bs\(scale)"
+        let key = "\(preset.cacheSignature)|\(adjustments.tileCacheKey)|bs\(scale)"
         if cached, let hit = tileCache.get(key) {
             cacheMetrics.tileHits += 1
             return hit
@@ -157,11 +168,15 @@ enum TextureRenderer {
         }
 
         if let tintColor = preset.tint.usingColorSpace(.sRGB) {
+            let matte = CGFloat(min(max(adjustments.matte, 0), 1))
+            let red = tintColor.redComponent * (1 - matte) + 0.5 * matte
+            let green = tintColor.greenComponent * (1 - matte) + 0.5 * matte
+            let blue = tintColor.blueComponent * (1 - matte) + 0.5 * matte
             context.setFillColor(
-                red: tintColor.redComponent,
-                green: tintColor.greenComponent,
-                blue: tintColor.blueComponent,
-                alpha: preset.tintAlpha
+                red: red,
+                green: green,
+                blue: blue,
+                alpha: min(1, preset.tintAlpha + 0.18 * matte)
             )
             context.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
         }
@@ -270,9 +285,9 @@ enum TextureRenderer {
         let key: String
         switch preset.engineVersion {
         case .legacy:
-            key = "\(preset.grainSignature)|\(adjustments.cacheKey)"
+            key = "\(preset.grainSignature)|\(adjustments.fieldCacheKey)"
         case .spectral, .spectralPlus:
-            key = "\(preset.grainSignature)|\(adjustments.cacheKey)|bs\(backingFactor)"
+            key = "\(preset.grainSignature)|\(adjustments.fieldCacheKey)|bs\(backingFactor)"
         }
         if cached, let hit = fieldCache.get(key) {
             cacheMetrics.fieldHits += 1

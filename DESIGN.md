@@ -310,3 +310,16 @@ Deckle uses a hybrid of tonal layering and restrained ambient shadows. Surfaces 
 - **Don't** truncate control-tab labels to make them fit. Keep the tab row scrollable and signal overflow.
 - **Don't** animate layout with spring bounce. Motion communicates a state change and then gets out of the way.
 - **Don't** leave blank material below the footer after a mode transition. If that occurs, the sizing contract is broken.
+
+
+## Studio workflow (current implementation)
+
+The main menu now opens on **Your desk**: a 342 × 148-point paper sample with a serif name, a precise intensity control, Pause/Enable, and Compare original. Comparison temporarily hides the overlay and ends when the menu closes. It does not rewrite a paper, enabled state, or snooze.
+
+**Desk setups** save the working combination of paper, intensity, grain size, grain strength, and matte finish. Read, Write, and Unwind provide starting points. Up to eight setups can be saved; right-click removes one. An active Paper Mill draft must be finished before saving or applying setups.
+
+**Paper library** replaces the home carousel with a focused searchable grid. **Controls and settings** replaces the main content rather than stacking a drawer over it. Paper Mill remains a permanent header action; New, Import, and Community stay in the library action menu.
+
+The studio uses Deckle Rust for selection and native controls, system semantic surfaces for light/dark adaptation, and small 5–8-point corners inspired by paper samples. Serif typography is reserved for the product and material names; small controls remain in the system font. Internal engine versions are omitted from the main user flow. Actual procedural paper samples carry the visual identity. Paper Mill appearance estimates intentionally exclude the separate Matte finish adjustment.
+
+Review renders in `docs/studio-*.png` come from actual SwiftUI views with isolated sample preferences; they are not live menu-bar screenshots. Live multi-display geometry and menu dismissal still require bundled-app UI verification.

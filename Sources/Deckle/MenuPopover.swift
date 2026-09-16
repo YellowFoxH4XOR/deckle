@@ -9,6 +9,7 @@ import SwiftUI
 @MainActor
 struct MenuPopover<Content: View>: View {
     let preferredWidth: CGFloat
+    var onHide: @MainActor () -> Void = {}
     @ViewBuilder let content: () -> Content
     @State private var measuredHeight: CGFloat = 0
     @State private var availableMaxHeight: CGFloat = .infinity
@@ -41,7 +42,7 @@ struct MenuPopover<Content: View>: View {
     }
 
     private var sizingView: some View {
-        MenuSizingRepresentable { height, maxH in
+        MenuSizingRepresentable(onHide: onHide) { height, maxH in
             if abs(measuredHeight - height) >= 0.5 {
                 measuredHeight = height
             }
@@ -70,27 +71,32 @@ enum MenuPopoverGeometry {
 
 @MainActor
 private struct MenuSizingRepresentable: NSViewRepresentable {
+    let onHide: @MainActor () -> Void
     let onSizeChanged: @MainActor (CGFloat, CGFloat) -> Void
 
     func makeNSView(context: Context) -> MenuSizingView {
         let view = MenuSizingView()
         view.onSizeChanged = onSizeChanged
+        view.onHide = onHide
         return view
     }
 
     func updateNSView(_ nsView: MenuSizingView, context: Context) {
         nsView.onSizeChanged = onSizeChanged
+        nsView.onHide = onHide
         nsView.scheduleSizing()
     }
 
     static func dismantleNSView(_ nsView: MenuSizingView, coordinator: ()) {
         nsView.stopObserving()
         nsView.onSizeChanged = nil
+        nsView.onHide = nil
     }
 }
 
 @MainActor
 final class MenuSizingView: NSView {
+    var onHide: (@MainActor () -> Void)?
     var onSizeChanged: (@MainActor (CGFloat, CGFloat) -> Void)?
     private var sizingScheduled = false
     private var lastMeasuredHeight: CGFloat = 0
@@ -132,6 +138,9 @@ final class MenuSizingView: NSView {
     }
 
     @objc private func windowGeometryChanged(_ notification: Notification) {
+        // MenuBarExtra retains its SwiftUI tree after dismissing the window,
+        // so onDisappear alone cannot end a temporary bare-screen comparison.
+        if let window, !window.isVisible { onHide?() }
         scheduleSizing()
     }
 
