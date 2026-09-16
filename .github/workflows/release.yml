@@ -11,12 +11,20 @@ jobs:
   release:
     runs-on: macos-14
     env:
+      DEVELOPER_DIR: /Applications/Xcode_15.4.app/Contents/Developer
       # Signing + notarization activate only when the repo has these secrets;
       # otherwise the build falls back to an ad-hoc signature (still installs,
       # but shows Gatekeeper's "unverified developer" prompt).
       HAS_SIGNING: ${{ secrets.MACOS_CERT_P12 != '' }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: Verify release candidate
+        run: |
+          plutil -lint Support/Info.plist
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)
+          test "v$VERSION" = "$GITHUB_REF_NAME"
+          swift test
 
       - name: Import Developer ID certificate
         if: env.HAS_SIGNING == 'true'

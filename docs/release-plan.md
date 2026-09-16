@@ -1,9 +1,8 @@
-# Proposed Deckle 1.9.0 release
+# Deckle 1.9.0 release plan
 
-Status: preparation only. No version bump, commit, tag, push, or publication yet.
-Current local metadata is 1.8.0, build 19. Propose 1.9.0, build 20 for
-the new workflows and controls; verify remote release/tag history before assigning
-the final version and ensure the build number exceeds every published build.
+Target: Deckle 1.9.0, build 20. Deckle 1.8.0, build 19 was the latest
+published release when this candidate was prepared; the new build number exceeds
+every published build.
 
 ## Scope
 
@@ -37,12 +36,15 @@ replacement documentation and external image references have been reviewed.
 - Validate appearance on light and dark content across presets and intensity
   settings. The current operation blends the tint toward gray; it is not
   content-aware highlight processing and cannot change physical glass reflections.
-- Regenerate the native desk review renders so they include the matte control and
-  review older demo/editor imagery for misleading UI or claims.
-- Run the bundled app through library search, controls, setups, compare/dismiss,
-  snooze, app rules, display exclusions, and Paper Mill preview lifecycle. Verify
-  accessibility and geometry at 370 points and on a short/secondary screen.
-  Capture current screenshots. Prior native view renders are not live UI evidence.
+- Native desk review renders include the Matte finish control and the README
+  identifies them as isolated renders; older demo/editor imagery is not presented
+  as the current studio menu.
+- The bundled candidate was exercised through library search, controls, setup
+  save/restart/remove, compare/dismiss, snooze, app rules, display controls, and
+  Paper Mill preview/close. Live captures verified the 370-point menu, accessible
+  labels, and Paper Mill placement on the built-in Retina display. No secondary
+  display was connected; bounded and negative-coordinate geometry remain covered
+  by `MenuPopoverTests`.
 
 ## Verification and release sequence
 
@@ -50,11 +52,10 @@ replacement documentation and external image references have been reviewed.
    `make build UNIVERSAL=1`. Verify supported macOS deployment targets and both
    binary slices. Exercise `make app UNIVERSAL=1` from a clean build environment
    to ensure the packaging fix works on the release runner as well as locally.
-2. Review `.github/workflows/release.yml`: it currently runs on `macos-14` without
-   explicitly selecting Xcode, runs no tests, and permits ad-hoc signing when
-   signing secrets are absent. Add test/plist gates and validate intended compiler
-   selection and Developer ID/notarization availability before publishing.
-   Never print signing secrets to verify their availability.
+2. `.github/workflows/release.yml` runs on `macos-14` with Xcode 15.4 selected
+   explicitly and validates the plist, tag/version agreement, and full test suite
+   before packaging. Developer ID and notarization secrets are configured; never
+   print their values to verify availability.
 3. Prepare release notes describing the user-visible changes and the matte
    control's actual behavior. Submit the focused branch through a PR to protected
    main, including exact verification results and screenshots.
@@ -70,8 +71,11 @@ replacement documentation and external image references have been reviewed.
 
 ## Validation record
 
-- `plutil -lint Support/Info.plist`: passed during cleanup.
-- `git diff --check`: passed after cleanup and plan changes.
-- `swift test`: 71 tests reported, 2 opt-in rendering tests skipped, 0 failures.
-- Current matte behavior: covered by deterministic unit tests; live bundled-app UI
-  verification remains pending as described above.
+- `plutil -lint Support/Info.plist` and `git diff --check`: passed for the 1.9.0 candidate.
+- `swift test`: 77 tests passed; the 2 opt-in rendering tests also passed separately.
+- `make build UNIVERSAL=1` and `make app UNIVERSAL=1`: passed; the bundled binary
+  contains both arm64 and x86_64 slices and its signature verifies.
+- Live bundled-app validation passed. It found and fixed comparison remaining active
+  after leaving Your desk; tab, controls, Paper Mill, and menu-dismiss paths now
+  restore the saved overlay. The user's preferences were backed up and restored
+  byte-for-byte after the smoke test.
