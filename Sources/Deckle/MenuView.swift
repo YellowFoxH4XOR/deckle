@@ -24,11 +24,13 @@ struct MenuView: View {
             topHeaderBar
             HStack(spacing: 0) {
                 studioTab("Your desk", selected: !isLibraryFocused && !isDetailsExpanded) {
+                    state.isComparingOriginal = false
                     searchText = ""
                     isShowingAllPapers = false
                     isDetailsExpanded = false
                 }
                 studioTab("Paper library", selected: isLibraryFocused && !isDetailsExpanded) {
+                    state.isComparingOriginal = false
                     isShowingAllPapers = true
                     isDetailsExpanded = false
                 }
@@ -99,6 +101,7 @@ struct MenuView: View {
             }
             Spacer()
             Button {
+                state.isComparingOriginal = false
                 PaperMill.shared.toggle()
             } label: {
                 Label(mill.isOpen ? "Close Mill" : "Paper Mill", systemImage: "scissors")
@@ -108,6 +111,7 @@ struct MenuView: View {
             .controlSize(.small)
             .help("Create and edit custom papers")
             Button {
+                state.isComparingOriginal = false
                 isDetailsExpanded.toggle()
                 selectedControlTab = .grain
                 isSearchFocused = false
