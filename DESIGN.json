@@ -3,6 +3,30 @@
   "generatedAt": "2026-08-29T20:28:55Z",
   "title": "Design System: Deckle",
   "extensions": {
+    "studioWorkflow": {
+      "home": "Your desk",
+      "library": "Paper library",
+      "accent": "brand-rust",
+      "paperSample": {
+        "width": 342,
+        "height": 148,
+        "cornerRadius": 5,
+        "nameTypography": "27pt medium system serif"
+      },
+      "setups": {
+        "maxCount": 8,
+        "columns": 3,
+        "fields": [
+          "textureID",
+          "intensity",
+          "grainScale",
+          "grainStrength",
+          "matteStrength"
+        ]
+      },
+      "comparison": "Transient bare screen; restores paper on menu dismissal",
+      "controls": "Separate content mode; never stacked over desk or library"
+    },
     "colorMeta": {
       "brand-rust": {
         "role": "primary",

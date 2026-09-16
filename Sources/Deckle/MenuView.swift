@@ -1,9 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Modern, elevated menu bar popover for Deckle.
-/// Features direct Paper Mill opening, search field, prominent hero status card,
-/// feature spotlight card, preset carousel/grid with scroll affordances, and expandable fine-tuning drawer.
+/// A paper-first desk, a searchable library, and a separate controls surface.
 struct MenuView: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject private var updater = UpdateManager.shared
@@ -16,196 +14,116 @@ struct MenuView: View {
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
-        MenuPopover(preferredWidth: 370) {
+        MenuPopover(preferredWidth: 370, onHide: { state.isComparingOriginal = false }) {
             content
         }
     }
 
     private var content: some View {
-        VStack(spacing: 12) {
-            // 1. Top Navigation & Action Header (Always Pinned at Top)
+        VStack(spacing: 14) {
             topHeaderBar
+            HStack(spacing: 0) {
+                studioTab("Your desk", selected: !isLibraryFocused && !isDetailsExpanded) {
+                    searchText = ""
+                    isShowingAllPapers = false
+                    isDetailsExpanded = false
+                }
+                studioTab("Paper library", selected: isLibraryFocused && !isDetailsExpanded) {
+                    isShowingAllPapers = true
+                    isDetailsExpanded = false
+                }
+            }
+            .padding(3)
+            .background(Color.primary.opacity(0.045))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            // 2. Search Bar
-            searchBar
-
-            // 3. Update & Notification Banner
             if case .available(let version) = updater.status, dismissedUpdateVersion != version {
                 updateBanner(version: version)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .opacity),
-                        removal: .scale.combined(with: .opacity)
-                    ))
             } else if updater.status == .installing {
                 installingBanner
             } else if case .failed(let message) = updater.status {
                 updateFailedBanner(message)
             }
 
-            if !isLibraryFocused {
-                HeroCardView(
-                    isDetailsExpanded: $isDetailsExpanded,
-                    selectedTab: $selectedControlTab
-                )
-            }
-
-            // The header control must stay functional while search results are shown.
             if isDetailsExpanded {
-                QuickControlsView(
-                    isExpanded: $isDetailsExpanded,
-                    selectedTab: $selectedControlTab
-                )
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
-            if !isLibraryFocused && !isDetailsExpanded {
-                FeaturePromoCard {
-                    PaperMill.shared.open()
-                }
-            }
-
-            // 7. Preset Carousel / Grid
-            PresetCollectionView(
-                searchText: $searchText,
-                isShowingAllGrid: $isShowingAllPapers,
-                onOpenMill: { paper, isNew in
-                    if isNew {
-                        PaperMill.shared.compose(from: paper)
-                    } else {
-                        PaperMill.shared.open(editing: paper)
+                QuickControlsView(isExpanded: $isDetailsExpanded, selectedTab: $selectedControlTab)
+            } else if isLibraryFocused {
+                searchBar
+                PresetCollectionView(
+                    searchText: $searchText,
+                    isShowingAllGrid: $isShowingAllPapers,
+                    onOpenMill: { paper, isNew in
+                        if isNew { PaperMill.shared.compose(from: paper) }
+                        else { PaperMill.shared.open(editing: paper) }
                     }
-                }
-            )
-
-            // 8. Footer Info & Actions
+                )
+            } else {
+                HeroCardView()
+                Divider()
+                DeskSetupsView()
+            }
+            Divider()
             footer
         }
         .padding(14)
         .frame(width: 370)
-        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isDetailsExpanded)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dismissedUpdateVersion)
-        // MenuBarExtra sizes its native window from the content's fitting size.
-        // Animate neither side of a library switch through intermediate heights.
+        .tint(StudioStyle.rust)
+        // Native popover geometry follows the final content size directly.
         .animation(nil, value: isLibraryFocused)
-        .onChange(of: isShowingAllPapers) { expanded in
-            if expanded {
-                isDetailsExpanded = false
-                isSearchFocused = false
-            }
-        }
+        .animation(nil, value: isDetailsExpanded)
+        .onDisappear { state.isComparingOriginal = false }
+        .onChange(of: state.textureID) { _ in state.isComparingOriginal = false }
     }
 
-    // MARK: - 1. Top Header Bar (Matching Reference Design)
+    private func studioTab(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(selected ? Color(nsColor: .controlBackgroundColor) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
 
     private var topHeaderBar: some View {
-        HStack(spacing: 8) {
-            // Capsule "Open Mill" / "Close Mill" button -> Toggles Paper Mill window
-            Button(action: {
-                PaperMill.shared.toggle()
-            }) {
-                HStack(spacing: 6) {
-                    ZStack {
-                        Circle()
-                            .fill(mill.isOpen ? Color.accentColor : Color.blue)
-                            .frame(width: 22, height: 22)
-
-                        Image(systemName: mill.isOpen ? "xmark" : "wand.and.stars")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.white)
-                    }
-
-                    Text(mill.isOpen ? "Close Mill" : "Open Mill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.primary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(mill.isOpen ? Color.accentColor.opacity(0.1) : Color(nsColor: .controlBackgroundColor))
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(mill.isOpen ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.12), lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.04), radius: 2, y: 1)
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Deckle")
+                    .font(.system(size: 23, weight: .medium, design: .serif))
+                Text("A softer place to work.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
-            .help(mill.isOpen ? "Close Paper Mill" : "Open Paper Mill to craft custom paper textures")
             Spacer()
-
-            // 1. Fine-Tuning Drawer Button (Grain, Snooze, Displays, App Rules)
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    if isDetailsExpanded && selectedControlTab != .settings {
-                        isDetailsExpanded = false
-                    } else {
-                        selectedControlTab = .grain
-                        isDetailsExpanded = true
+            Button {
+                PaperMill.shared.toggle()
+            } label: {
+                Label(mill.isOpen ? "Close Mill" : "Paper Mill", systemImage: "scissors")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Create and edit custom papers")
+            Button {
+                isDetailsExpanded.toggle()
+                selectedControlTab = .grain
+                isSearchFocused = false
+            } label: {
+                Image(systemName: isDetailsExpanded ? "xmark" : "slider.horizontal.3")
+                    .font(.system(size: 14))
+                    .frame(width: 28, height: 28)
+                    .background(isDetailsExpanded ? StudioStyle.rust.opacity(0.10) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(alignment: .topTrailing) {
+                        if isUpdateAvailable { Circle().fill(StudioStyle.rust).frame(width: 5, height: 5) }
                     }
-                }
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(Color(nsColor: .controlBackgroundColor))
-                        .frame(width: 36, height: 36)
-                        .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
-
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(isDetailsExpanded && selectedControlTab != .settings ? Color.accentColor : Color.primary)
-                }
-                .overlay(
-                    Circle()
-                        .stroke(
-                            isDetailsExpanded && selectedControlTab != .settings ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.12),
-                            lineWidth: 1
-                        )
-                )
             }
             .buttonStyle(.plain)
-            .help(isDetailsExpanded && selectedControlTab != .settings ? "Hide fine-tuning" : "Fine-Tuning & Adjustments")
-
-            // 2. Settings & Preferences Button
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    if isDetailsExpanded && selectedControlTab == .settings {
-                        isDetailsExpanded = false
-                    } else {
-                        selectedControlTab = .settings
-                        isDetailsExpanded = true
-                    }
-                }
-            }) {
-                ZStack(alignment: .topTrailing) {
-                    ZStack {
-                        Circle()
-                            .fill(Color(nsColor: .controlBackgroundColor))
-                            .frame(width: 36, height: 36)
-                            .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
-
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(isDetailsExpanded && selectedControlTab == .settings ? Color.accentColor : Color.primary)
-                    }
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                isDetailsExpanded && selectedControlTab == .settings ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.12),
-                                lineWidth: 1
-                            )
-                    )
-
-                    // Active update badge dot if an update is waiting
-                    if isUpdateAvailable {
-                        Circle()
-                            .fill(Color.red)
-                            .frame(width: 9, height: 9)
-                            .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
-                            .offset(x: 1, y: -1)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .help(isDetailsExpanded && selectedControlTab == .settings ? "Hide settings" : (isUpdateAvailable ? "Settings (Update Available)" : "Settings & Preferences"))
+            .accessibilityLabel(isDetailsExpanded ? "Close controls" : "Controls and settings")
+            .help("Grain, snooze, displays, app rules and settings")
         }
     }
 
@@ -289,7 +207,7 @@ struct MenuView: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.primary)
 
-                Text("New engine improvements ready.")
+                Text("A new version is ready to install.")
                     .font(.system(size: 11, weight: .regular))
                     .foregroundStyle(.secondary)
             }
@@ -311,7 +229,7 @@ struct MenuView: View {
             .buttonStyle(.plain)
 
             Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(.easeOut(duration: 0.2)) {
                     dismissedUpdateVersion = version
                 }
             }) {
@@ -398,7 +316,7 @@ struct MenuView: View {
             Spacer(minLength: 4)
 
             Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(.easeOut(duration: 0.2)) {
                     // Record the version first: restoring `.available` must
                     // not replace this banner with a second banner.
                     dismissedUpdateVersion = updater.latestKnownVersion
@@ -430,23 +348,6 @@ struct MenuView: View {
 
     private var footer: some View {
         VStack(spacing: 8) {
-            // Version & Update Status Line
-            HStack(spacing: 6) {
-                Text("Deckle v\(updater.currentVersion)")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.primary)
-
-                Text("·")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-
-                footerUpdateStatus
-
-                Spacer()
-
-                footerUpdateAction
-            }
-
             // Shortcuts & External Links Line
             HStack {
                 HStack(spacing: 4) {
@@ -486,62 +387,4 @@ struct MenuView: View {
         .padding(.top, 4)
     }
 
-    @ViewBuilder
-    private var footerUpdateStatus: some View {
-        switch updater.status {
-        case .checking:
-            HStack(spacing: 4) {
-                ProgressView().controlSize(.mini)
-                Text("Checking…")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-        case .installing:
-            HStack(spacing: 4) {
-                ProgressView().controlSize(.mini)
-                Text("Installing…")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color.accentColor)
-            }
-        case .available(let version):
-            Text("v\(version) ready")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-        case .upToDate:
-            Text("Up to date")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-        case .failed(let message):
-            Text("Update issue")
-                .font(.system(size: 10))
-                .foregroundStyle(.orange)
-                .help(message)
-        case .idle:
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var footerUpdateAction: some View {
-        if case .available = updater.status {
-            Button("Update now") {
-                updater.installLatest(userInitiated: true)
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 11, weight: .bold))
-            .foregroundStyle(Color.accentColor)
-        } else if updater.status == .checking || updater.status == .installing {
-            EmptyView()
-        } else {
-            Button(action: {
-                Task { await updater.check(userInitiated: true) }
-            }) {
-                Text(updater.status == .upToDate ? "Check again" : "Check for updates")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-            .disabled(updater.status == .checking || updater.status == .installing)
-        }
-    }
 }

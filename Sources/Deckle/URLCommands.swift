@@ -15,9 +15,8 @@ import AppKit
 ///   deckle://grain?size=2&strength=1.2
 enum URLCommands {
     @MainActor
-    static func handle(_ url: URL) {
+    static func handle(_ url: URL, state: AppState = .shared) {
         guard url.scheme == "deckle" else { return }
-        let state = AppState.shared
         let params = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?
             .reduce(into: [String: String]()) { $0[$1.name.lowercased()] = $1.value } ?? [:]
@@ -57,17 +56,17 @@ enum URLCommands {
                 state.textureID = custom.id
             }
         case "intensity":
-            if let percent = params["percent"].flatMap(Double.init) ?? params["value"].flatMap(Double.init) {
+            if let percent = params["percent"].flatMap(Double.init) ?? params["value"].flatMap(Double.init), percent.isFinite {
                 state.intensity = min(max(percent / 100, 0.05), 0.45)
             }
         case "grain":
-            if let size = params["size"].flatMap(Double.init) {
+            if let size = params["size"].flatMap(Double.init), size.isFinite {
                 // Snap to the picker's detents so UI and URL agree.
                 state.grainScale = [0.5, 1.0, 2.0, 4.0].min {
                     abs($0 - size) < abs($1 - size)
                 } ?? 1.0
             }
-            if let strength = params["strength"].flatMap(Double.init) {
+            if let strength = params["strength"].flatMap(Double.init), strength.isFinite {
                 state.grainStrength = min(max(strength, 0.25), 2.0)
             }
         default:

@@ -22,7 +22,7 @@ struct MenuBarLabel: View {
     @ObservedObject private var state = AppState.shared
 
     var body: some View {
-        Image(nsImage: state.shouldShowOverlay ? Icons.menuOn : Icons.menuOff)
+        Image(nsImage: state.shouldShowOverlay && !state.isComparingOriginal ? Icons.menuOn : Icons.menuOff)
     }
 }
 

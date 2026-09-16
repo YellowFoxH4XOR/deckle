@@ -385,7 +385,7 @@ final class TextureRendererTests: XCTestCase {
     func testAdjustmentCacheKeyDistinguishesSubCentChanges() {
         let preset = v3Preset(id: "adjustment-cache", seed: 17)
         let first = TextureRenderer.GrainAdjustments(scale: 1.001, strength: 1.001)
-        let second = TextureRenderer.GrainAdjustments(scale: 1.004, strength: 1.004)
+        let second = TextureRenderer.GrainAdjustments(scale: 1.001, strength: 1.004)
 
         XCTAssertNotEqual(first.cacheKey, second.cacheKey)
         let firstBytes = rawPixelBytes(TextureRenderer.tile(for: preset, adjustments: first))
@@ -394,7 +394,27 @@ final class TextureRendererTests: XCTestCase {
         let after = TextureRenderer.cacheMetrics
 
         XCTAssertEqual(after.tileMisses, before.tileMisses + 1, "distinct adjustment values must not reuse a tile cache entry")
+        XCTAssertEqual(after.fieldMisses, before.fieldMisses, "strength changes should reuse the synthesized field")
         XCTAssertNotEqual(firstBytes, secondBytes, "sub-cent adjustment changes must affect rendered pixels")
+    }
+
+    func testMatteChangesOnlyTheCompositeAndZeroIsStable() {
+        let preset = v3Preset(id: "matte-cache", seed: 31)
+        let base = TextureRenderer.GrainAdjustments.none
+        let matte = TextureRenderer.GrainAdjustments(scale: 1, strength: 1, matte: 0.6)
+
+        let zeroBytes = rawPixelBytes(TextureRenderer.compositeTile(for: preset, adjustments: base, backingScale: 1))
+        let beforeMatte = TextureRenderer.cacheMetrics
+        let matteBytes = rawPixelBytes(TextureRenderer.compositeTile(for: preset, adjustments: matte, backingScale: 1))
+        let afterMatte = TextureRenderer.cacheMetrics
+
+        XCTAssertNotEqual(zeroBytes, matteBytes, "matte must change the final composited tile")
+        XCTAssertEqual(afterMatte.fieldMisses, beforeMatte.fieldMisses, "matte must not regenerate the grain field")
+        XCTAssertEqual(afterMatte.tileMisses, beforeMatte.tileMisses, "matte must reuse the grain tile")
+
+        TextureRenderer.resetCaches()
+        let zeroAgain = rawPixelBytes(TextureRenderer.compositeTile(for: preset, adjustments: .init(matte: 0), backingScale: 1))
+        XCTAssertEqual(zeroBytes, zeroAgain, "zero matte must preserve the unmatte composited output")
     }
 
     func testColorAndStrengthCacheKeysAreLossless() {

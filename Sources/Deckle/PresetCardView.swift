@@ -27,14 +27,10 @@ struct ModernPresetCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 // Top Preview Image
                 ZStack(alignment: .topTrailing) {
-                    Image(nsImage: TextureRenderer.preview(
-                        for: preset,
-                        size: CGSize(width: 96, height: 54)
-                    ))
-                    .resizable()
-                    .aspectRatio(16/9, contentMode: .fill)
+                    PaperSample(preset: preset, size: CGSize(width: 92, height: 52))
+                        .equatable()
                     .frame(height: 52)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
 
                     // Selected checkmark or custom indicator
                     if isSelected {
@@ -63,13 +59,13 @@ struct ModernPresetCard: View {
             .padding(8)
             .frame(width: 108)
             .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color.accentColor.opacity(0.09) : Color(nsColor: .controlBackgroundColor).opacity(0.75))
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(isSelected ? StudioStyle.rust.opacity(0.09) : Color(nsColor: .controlBackgroundColor).opacity(0.75))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 5)
                     .stroke(
-                        isSelected ? Color.accentColor : Color.primary.opacity(0.08),
+                        isSelected ? StudioStyle.rust : Color.primary.opacity(0.08),
                         lineWidth: isSelected ? 1.5 : 1
                     )
             )
@@ -105,7 +101,9 @@ struct ModernPresetCard: View {
                         seed: preset.seed,
                         fiberAngle: preset.v3Config?.fiberAngle ?? 0.3,
                         fiberStrength: preset.v3Config?.fiberStrength ?? 0.30,
-                        surfaceRoughness: preset.v3Config?.surfaceRoughness ?? 0.15
+                        surfaceRoughness: preset.v3Config?.surfaceRoughness ?? 0.15,
+                        darkGrainStrength: preset.darkStrength,
+                        lightGrainStrength: preset.lightStrength
                     )
                     if let onOpenMill {
                         onOpenMill(duplicate, true)
@@ -121,6 +119,8 @@ struct ModernPresetCard: View {
     private var tagText: String {
         if isCustom {
             return "Custom"
+        } else if preset.isQuietReading {
+            return preset.id == "clear-veil" ? "No grain" : "Quiet reading"
         } else if preset.isDark {
             return "Dark paper"
         } else if preset.weave != nil {
@@ -142,7 +142,7 @@ struct PresetCollectionView: View {
     @State private var scrollIndex: Int = 0
 
     private var normalizedQuery: String {
-        searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        PaperSearch.normalized(searchText)
     }
 
     private var isSearching: Bool { !normalizedQuery.isEmpty }
@@ -163,13 +163,7 @@ struct PresetCollectionView: View {
         if isSearching {
             let customIDs = Set(state.customPapers.map(\.id))
             return (TexturePreset.all + customPresets).filter { preset in
-                let tags = [
-                    preset.isDark ? "dark black" : "light white",
-                    preset.weave != nil ? "weave woven cotton" : "smooth",
-                    customIDs.contains(preset.id) ? "custom my paper" : "built in"
-                ].joined(separator: " ")
-                let searchable = "\(preset.name) \(preset.subtitle) \(preset.id) \(tags)".lowercased()
-                return searchable.contains(normalizedQuery)
+                PaperSearch.matches(preset, query: normalizedQuery, isCustom: customIDs.contains(preset.id))
             }
         }
 
@@ -197,13 +191,13 @@ struct PresetCollectionView: View {
                             .foregroundStyle(.primary)
                         Text("\(filteredPresets.count)")
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(StudioStyle.rust)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1)
-                            .background(Color.accentColor.opacity(0.12))
+                            .background(StudioStyle.rust.opacity(0.12))
                             .clipShape(Capsule())
                     } else {
-                        Text(isShowingAllGrid ? "All Papers" : "Presets")
+                        Text(isShowingAllGrid ? "Paper library" : "Paper samples")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.primary)
 
@@ -226,7 +220,7 @@ struct PresetCollectionView: View {
                         searchText = ""
                     }
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(StudioStyle.rust)
                     .buttonStyle(.plain)
                 } else {
                     Button(action: {
@@ -235,12 +229,12 @@ struct PresetCollectionView: View {
                         if !expanding { selectedCategory = .all }
                     }) {
                         HStack(spacing: 4) {
-                            Text(isShowingAllGrid ? "Compact" : "All papers")
+                            Text(isShowingAllGrid ? "Your desk" : "All papers")
                                 .font(.system(size: 12, weight: .medium))
                             Image(systemName: isShowingAllGrid ? "chevron.up" : "chevron.right")
                                 .font(.system(size: 10, weight: .semibold))
                         }
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(StudioStyle.rust)
                     }
                     .buttonStyle(.plain)
                 }
@@ -281,7 +275,7 @@ struct PresetCollectionView: View {
                                 .padding(.vertical, 4)
                                 .background(
                                     Capsule()
-                                        .fill(selectedCategory == category ? Color.accentColor : Color.primary.opacity(0.06))
+                                        .fill(selectedCategory == category ? StudioStyle.rust : Color.primary.opacity(0.06))
                                 )
                                 .foregroundStyle(selectedCategory == category ? Color.white : Color.primary)
                         }
@@ -355,6 +349,7 @@ struct PresetCollectionView: View {
                                 customPaper: custom,
                                 onOpenMill: onOpenMill
                             ) {
+                                state.isComparingOriginal = false
                                 state.textureID = preset.id
                             }
                         }
@@ -379,6 +374,7 @@ struct PresetCollectionView: View {
                                         customPaper: custom,
                                         onOpenMill: onOpenMill
                                     ) {
+                                        state.isComparingOriginal = false
                                         state.textureID = preset.id
                                     }
                                     .id(index)
@@ -409,7 +405,7 @@ struct PresetCollectionView: View {
                         // Floating Circular Scroll Next Button (matching reference)
                         if filteredPresets.count > 2 {
                             Button(action: {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                withAnimation(.easeOut(duration: 0.2)) {
                                     scrollIndex = (scrollIndex + 2) % filteredPresets.count
                                     proxy.scrollTo(scrollIndex, anchor: .leading)
                                 }

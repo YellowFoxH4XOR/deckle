@@ -65,16 +65,11 @@ final class OverlayController {
             guard let displayID = screen.displayID else { continue }
             seen.insert(displayID)
 
-            let excluded = state.excludedDisplays.contains(String(displayID))
             // A Paper Mill preview overrides both the on/off state and app rules —
             // you have to be able to judge a draft while the overlay is off — but
             // still honours per-display exclusions, so the preview lands exactly
             // where the finished paper would.
-            let visible = !excluded && (
-                state.previewPaper != nil
-                    || (state.shouldShowOverlay
-                        && state.appRuleAllows(frontmost: frontmostBundleID))
-            )
+            let visible = state.overlayIsVisible(on: String(displayID), frontmost: frontmostBundleID)
 
             // .none removes the overlay from screenshots/recordings while it
             // stays visible on the physical display. Changing sharingType on
