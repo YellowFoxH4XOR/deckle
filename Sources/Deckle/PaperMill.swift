@@ -667,14 +667,37 @@ private struct PaperMillView: View {
 // MARK: - Export / import
 
 enum PaperFiles {
+    struct ImportFailure: Equatable {
+        let url: URL
+        let message: String
+    }
+
+    static func encode(_ paper: CustomPaper) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(paper)
+    }
+
+    /// Decodes a shared paper and assigns it a fresh id so an import can
+    /// never silently overwrite a local paper.
+    static func decode(_ data: Data) throws -> CustomPaper {
+        var paper = try JSONDecoder().decode(CustomPaper.self, from: data)
+        paper.id = "custom-\(UUID().uuidString.lowercased())"
+        return paper
+    }
+
     static func export(_ paper: CustomPaper) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = "\(paper.name).decklepaper.json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try? (try? encoder.encode(paper)).map { try $0.write(to: url) }
+        do {
+            try encode(paper).write(to: url)
+        } catch {
+            NSLog("[Deckle paper files] export to \(url.path) failed: \(error)")
+            presentAlert(title: "Couldn't save paper",
+                         message: "\(url.lastPathComponent): \(error.localizedDescription)")
+        }
     }
 
     static func importPapers() {
@@ -683,12 +706,35 @@ enum PaperFiles {
         panel.allowsMultipleSelection = true
         panel.message = "Choose .decklepaper.json files"
         guard panel.runModal() == .OK else { return }
-        for url in panel.urls {
-            guard let data = try? Data(contentsOf: url),
-                  var paper = try? JSONDecoder().decode(CustomPaper.self, from: data) else { continue }
-            // Fresh id so an import can never silently overwrite a local paper.
-            paper.id = "custom-\(UUID().uuidString.lowercased())"
-            AppState.shared.customPapers.append(paper)
+        let failures = importPapers(urls: panel.urls, into: &AppState.shared.customPapers)
+        guard !failures.isEmpty else { return }
+        let lines = failures.map { "\($0.url.lastPathComponent): \($0.message)" }
+        presentAlert(title: "Couldn't import \(failures.count) file\(failures.count == 1 ? "" : "s")",
+                     message: lines.joined(separator: "\n"))
+    }
+
+    /// Reads and decodes each file, appending successes to `papers`.
+    /// Returns one failure per file that could not be read or decoded.
+    @discardableResult
+    static func importPapers(urls: [URL], into papers: inout [CustomPaper]) -> [ImportFailure] {
+        var failures: [ImportFailure] = []
+        for url in urls {
+            do {
+                let data = try Data(contentsOf: url)
+                papers.append(try decode(data))
+            } catch {
+                NSLog("[Deckle paper files] import of \(url.path) failed: \(error)")
+                failures.append(ImportFailure(url: url, message: error.localizedDescription))
+            }
         }
+        return failures
+    }
+
+    private static func presentAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = title
+        alert.informativeText = message
+        alert.runModal()
     }
 }
