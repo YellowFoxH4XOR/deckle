@@ -147,8 +147,8 @@ struct PresetCollectionView: View {
 
     private var isSearching: Bool { !normalizedQuery.isEmpty }
 
-    private var gridViewportHeight: CGFloat {
-        let rowCount = max(1, (filteredPresets.count + 2) / 3)
+    private func gridViewportHeight(presetCount: Int) -> CGFloat {
+        let rowCount = max(1, (presetCount + 2) / 3)
         let cardHeight: CGFloat = 108
         let rowSpacing: CGFloat = 8
         let contentHeight = CGFloat(rowCount) * cardHeight
@@ -180,6 +180,16 @@ struct PresetCollectionView: View {
     }
 
     var body: some View {
+        let presets = filteredPresets
+        let customPapersByID = Dictionary(
+            state.customPapers.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        content(presets: presets, customPapersByID: customPapersByID)
+    }
+
+    @ViewBuilder
+    private func content(presets: [TexturePreset], customPapersByID: [String: CustomPaper]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             // Header Row: "Presets" on left, "All papers >" toggle on right
             // Header Row
@@ -189,7 +199,7 @@ struct PresetCollectionView: View {
                         Text("Search Results")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.primary)
-                        Text("\(filteredPresets.count)")
+                        Text("\(presets.count)")
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundStyle(StudioStyle.rust)
                             .padding(.horizontal, 6)
@@ -201,8 +211,8 @@ struct PresetCollectionView: View {
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.primary)
 
-                        if !isShowingAllGrid && filteredPresets.count > 2 {
-                            Text("\(filteredPresets.count)")
+                        if !isShowingAllGrid && presets.count > 2 {
+                            Text("\(presets.count)")
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 5)
@@ -303,7 +313,7 @@ struct PresetCollectionView: View {
             }
 
             // Carousel or Grid Content
-            if filteredPresets.isEmpty {
+            if presets.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "doc.text.magnifyingglass")
                         .font(.system(size: 24))
@@ -340,8 +350,8 @@ struct PresetCollectionView: View {
                         ],
                         spacing: 8
                     ) {
-                        ForEach(filteredPresets) { preset in
-                            let custom = state.customPapers.first { $0.id == preset.id }
+                        ForEach(presets) { preset in
+                            let custom = customPapersByID[preset.id]
                             ModernPresetCard(
                                 preset: preset,
                                 isSelected: preset.id == state.textureID,
@@ -356,7 +366,7 @@ struct PresetCollectionView: View {
                     }
                     .padding(.vertical, 2)
                 }
-                .frame(height: gridViewportHeight)
+                .frame(height: gridViewportHeight(presetCount: presets.count))
                 .layoutPriority(1)
             } else {
                 // Horizontal Carousel with Interactive Scroll Affordance
@@ -365,8 +375,8 @@ struct PresetCollectionView: View {
                         // Horizontal Scroll View
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
-                                ForEach(Array(filteredPresets.enumerated()), id: \.element.id) { index, preset in
-                                    let custom = state.customPapers.first { $0.id == preset.id }
+                                ForEach(Array(presets.enumerated()), id: \.element.id) { index, preset in
+                                    let custom = customPapersByID[preset.id]
                                     ModernPresetCard(
                                         preset: preset,
                                         isSelected: preset.id == state.textureID,
@@ -386,7 +396,7 @@ struct PresetCollectionView: View {
                         }
 
                         // A fade is useful only when three cards exceed the viewport.
-                        if filteredPresets.count > 2 {
+                        if presets.count > 2 {
                             HStack {
                                 Spacer()
                                 LinearGradient(
@@ -403,10 +413,10 @@ struct PresetCollectionView: View {
                         }
 
                         // Floating Circular Scroll Next Button (matching reference)
-                        if filteredPresets.count > 2 {
+                        if presets.count > 2 {
                             Button(action: {
                                 withAnimation(.easeOut(duration: 0.2)) {
-                                    scrollIndex = (scrollIndex + 2) % filteredPresets.count
+                                    scrollIndex = (scrollIndex + 2) % presets.count
                                     proxy.scrollTo(scrollIndex, anchor: .leading)
                                 }
                             }) {
