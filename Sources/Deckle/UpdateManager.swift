@@ -244,9 +244,14 @@ final class UpdateManager: ObservableObject {
             NSWorkspace.shared.open(releasesPage)
         case .install:
             guard let dmg = update?.downloadURL else { return }
+            let expectedIdentifier = Bundle.main.bundleIdentifier
             Task {
                 do {
-                    try await selfReplace(target: target, dmg: dmg)
+                    try await Self.selfReplace(
+                        target: target,
+                        dmg: dmg,
+                        expectedIdentifier: expectedIdentifier
+                    )
                     relaunch(target)
                 } catch {
                     status = .failed(error.localizedDescription)
@@ -284,7 +289,13 @@ final class UpdateManager: ObservableObject {
 
     // MARK: - Install mechanics
 
-    private func selfReplace(target: URL, dmg: URL) async throws {
+    /// Nonisolated so the blocking subprocess and file work runs on the
+    /// cooperative pool; callers publish `status` back on the main actor.
+    private nonisolated static func selfReplace(
+        target: URL,
+        dmg: URL,
+        expectedIdentifier: String?
+    ) async throws {
         let (download, _) = try await URLSession.shared.download(from: dmg)
         let mount = FileManager.default.temporaryDirectory
             .appendingPathComponent("deckle-update-\(UUID().uuidString)")
@@ -306,7 +317,7 @@ final class UpdateManager: ObservableObject {
         // `-R="anchor apple generic and certificate leaf[subject.OU] = <team>"`.)
         try run("/usr/bin/codesign", "--verify", "--deep", "--strict", newApp.path)
         let newInfo = NSDictionary(contentsOf: newApp.appendingPathComponent("Contents/Info.plist"))
-        guard newInfo?["CFBundleIdentifier"] as? String == Bundle.main.bundleIdentifier else {
+        guard newInfo?["CFBundleIdentifier"] as? String == expectedIdentifier else {
             throw UpdateError.badArchive
         }
 
@@ -341,7 +352,7 @@ final class UpdateManager: ObservableObject {
     }
 
     @discardableResult
-    private func run(_ launchPath: String, _ arguments: String...) throws -> String {
+    private nonisolated static func run(_ launchPath: String, _ arguments: String...) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: launchPath)
         process.arguments = arguments
