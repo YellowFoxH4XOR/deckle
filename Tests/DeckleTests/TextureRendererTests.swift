@@ -53,13 +53,14 @@ final class TextureRendererTests: XCTestCase {
         id: String,
         seed: UInt64,
         octaves: [(cell: Int, weight: Float)] = [(1, 0.6), (4, 0.4)],
-        weave: (period: Int, amplitude: Float)? = (32, 0.15)
+        weave: (period: Int, amplitude: Float)? = (32, 0.15),
+        tint: NSColor = NSColor(srgbRed: 0.9, green: 0.9, blue: 0.85, alpha: 1)
     ) -> TexturePreset {
         TexturePreset(
             id: id,
             name: "Test Paper",
             subtitle: "",
-            tint: NSColor(srgbRed: 0.9, green: 0.9, blue: 0.85, alpha: 1),
+            tint: tint,
             tintAlpha: 0.3,
             darkColor: NSColor(srgbRed: 0.2, green: 0.2, blue: 0.2, alpha: 1),
             lightColor: .white,
@@ -263,6 +264,30 @@ final class TextureRendererTests: XCTestCase {
         _ = TextureRenderer.preview(for: preset, size: CGSize(width: 64, height: 64), cached: false)
 
         XCTAssertEqual(TextureRenderer.cacheMetrics, before, "cached:false must bypass every cache lookup, not just the preview cache")
+    }
+
+    func testUncachedPreviewWithCachedGrainSharesTheFieldButNotTheComposite() {
+        let preset = spectralPreset(id: "draft-swatch", seed: 3)
+        let size = CGSize(width: 64, height: 64)
+
+        let before = TextureRenderer.cacheMetrics
+        _ = TextureRenderer.preview(for: preset, size: size, cached: false, cacheGrain: true)
+        let afterFirst = TextureRenderer.cacheMetrics
+
+        XCTAssertEqual(afterFirst.previewHits, before.previewHits)
+        XCTAssertEqual(afterFirst.previewMisses, before.previewMisses, "the transient swatch must stay out of the preview LRU")
+        XCTAssertEqual(afterFirst.tileMisses, before.tileMisses + 1)
+        XCTAssertEqual(afterFirst.fieldMisses, before.fieldMisses + 1)
+
+        // Same structure, different tint: the field and tile come back from
+        // cache while the composite is still synthesized fresh.
+        let recolored = spectralPreset(id: "draft-swatch", seed: 3, tint: NSColor(srgbRed: 0.2, green: 0.6, blue: 0.6, alpha: 1))
+        _ = TextureRenderer.preview(for: recolored, size: size, cached: false, cacheGrain: true)
+        let afterSecond = TextureRenderer.cacheMetrics
+
+        XCTAssertEqual(afterSecond.previewMisses, afterFirst.previewMisses)
+        XCTAssertEqual(afterSecond.fieldHits, afterFirst.fieldHits + 1, "color edits must reuse the spectral field")
+        XCTAssertEqual(afterSecond.fieldMisses, afterFirst.fieldMisses)
     }
 
     func testBoundedCachesRemainWithinCapacityAfterManyDistinctRenders() {
