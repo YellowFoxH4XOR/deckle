@@ -133,6 +133,41 @@ final class UpdateManagerTests: XCTestCase {
         XCTAssertNil(transition.installUserInitiated)
     }
 
+    // MARK: - Check failure messages
+
+    func testCheckFailureDistinguishesNetworkHTTPAndDecoding() throws {
+        XCTAssertTrue(
+            UpdateManager.checkFailureMessage(for: UpdateManager.CheckError.network(URLError(.notConnectedToInternet)))
+                .contains("Couldn't reach GitHub")
+        )
+        XCTAssertTrue(
+            UpdateManager.checkFailureMessage(for: UpdateManager.CheckError.network(URLError(.timedOut)))
+                .contains("too long")
+        )
+        XCTAssertTrue(
+            UpdateManager.checkFailureMessage(
+                for: UpdateManager.CheckError.http(statusCode: 403, rateLimitRemaining: "0")
+            ).contains("rate-limiting")
+        )
+        XCTAssertTrue(
+            UpdateManager.checkFailureMessage(
+                for: UpdateManager.CheckError.http(statusCode: 500, rateLimitRemaining: nil)
+            ).contains("HTTP 500")
+        )
+
+        do {
+            _ = try UpdateManager.releaseTransition(
+                from: Data("{\"message\":\"rate limited\"}".utf8),
+                currentVersion: "1.7.2",
+                userInitiated: true,
+                autoInstallEnabled: false
+            )
+            XCTFail("expected decoding failure")
+        } catch {
+            XCTAssertTrue(UpdateManager.checkFailureMessage(for: error).contains("unexpected response"))
+        }
+    }
+
     // MARK: - Failure dismissal
 
     func testFailureDismissalRestoresAndDismissesKnownVersionTogether() {

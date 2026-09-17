@@ -106,9 +106,24 @@ final class UpdateManager: ObservableObject {
     func check(userInitiated: Bool = false) async {
         if userInitiated { status = .checking }
         do {
-            var request = URLRequest(url: apiURL)
+            var request = URLRequest(url: apiURL, timeoutInterval: 15)
             request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let data: Data
+            let response: URLResponse
+            do {
+                (data, response) = try await URLSession.shared.data(for: request)
+            } catch {
+                throw CheckError.network(error)
+            }
+            guard let http = response as? HTTPURLResponse else {
+                throw CheckError.notHTTP
+            }
+            guard http.statusCode == 200 else {
+                throw CheckError.http(
+                    statusCode: http.statusCode,
+                    rateLimitRemaining: http.value(forHTTPHeaderField: "x-ratelimit-remaining")
+                )
+            }
             let transition = try Self.releaseTransition(
                 from: data,
                 currentVersion: currentVersion,
@@ -124,8 +139,40 @@ final class UpdateManager: ObservableObject {
                 installLatest(userInitiated: installUserInitiated)
             }
         } catch {
+            NSLog("[Deckle updater] check failed: \(error)")
             // Quiet failure for background checks; only surface when asked.
-            if userInitiated { status = .failed("Couldn't reach GitHub") }
+            if userInitiated { status = .failed(Self.checkFailureMessage(for: error)) }
+        }
+    }
+
+    enum CheckError: Error {
+        case network(Error)
+        case notHTTP
+        case http(statusCode: Int, rateLimitRemaining: String?)
+    }
+
+    /// Maps a failed check to a message that names the actual failure:
+    /// GitHub unreachable, GitHub answered with an error, or GitHub answered
+    /// with something this build cannot read.
+    nonisolated static func checkFailureMessage(for error: Error) -> String {
+        switch error {
+        case CheckError.network(let underlying):
+            if (underlying as? URLError)?.code == .timedOut {
+                return "GitHub took too long to respond. Try again later."
+            }
+            return "Couldn't reach GitHub. Check your internet connection."
+        case CheckError.http(let statusCode, let rateLimitRemaining):
+            if (statusCode == 403 && rateLimitRemaining == "0") || statusCode == 429 {
+                return "GitHub is rate-limiting update checks from this network. Try again in an hour."
+            }
+            if statusCode == 404 {
+                return "GitHub has no published release to check against."
+            }
+            return "GitHub returned an error (HTTP \(statusCode)). Try again later."
+        case CheckError.notHTTP, is DecodingError:
+            return "GitHub sent an unexpected response. Try again later."
+        default:
+            return "Update check failed: \(error.localizedDescription)"
         }
     }
 
