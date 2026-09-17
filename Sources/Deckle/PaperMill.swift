@@ -326,21 +326,43 @@ private struct PaperMillThumbnail: View, Equatable {
     let preset: TexturePreset
     let isAdjusting: Bool
 
+    /// The last synthesized swatch. Rendering happens in `.task(id:)`, once
+    /// per distinct (preset, isAdjusting) pair, never inside `body`.
+    @State private var image: NSImage?
+
+    private struct RenderKey: Equatable {
+        let preset: TexturePreset
+        let isAdjusting: Bool
+    }
+
     static func == (lhs: PaperMillThumbnail, rhs: PaperMillThumbnail) -> Bool {
         lhs.preset == rhs.preset && lhs.isAdjusting == rhs.isAdjusting
     }
 
     var body: some View {
-        Image(nsImage: TextureRenderer.preview(
-            for: preset,
-            size: CGSize(width: 380, height: 130),
-            backingScale: isAdjusting ? 1 : 2,
-            cached: false
-        ))
-        .resizable()
+        Group {
+            if let image {
+                Image(nsImage: image).resizable()
+            } else {
+                Color.clear
+            }
+        }
         .aspectRatio(380.0 / 130.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.15)))
+        .task(id: RenderKey(preset: preset, isAdjusting: isAdjusting)) {
+            // Runs on the main actor, matching the renderer's main-thread-only
+            // caches. The draft composite stays out of the preview LRU, but the
+            // field/tile underneath are cached so color and strength edits
+            // reuse the same spectral field instead of resynthesizing it.
+            image = TextureRenderer.preview(
+                for: preset,
+                size: CGSize(width: 380, height: 130),
+                backingScale: isAdjusting ? 1 : 2,
+                cached: false,
+                cacheGrain: true
+            )
+        }
     }
 }
 

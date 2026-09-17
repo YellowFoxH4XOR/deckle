@@ -190,11 +190,17 @@ enum TextureRenderer {
     /// Swatch used in the menu texture picker: the texture drawn over a plain
     /// background, boosted so it is recognizable at thumbnail size. Rendered
     /// eagerly into a full-resolution bitmap sized for `backingScale`.
+    /// `cached` controls the preview LRU; `cacheGrain` controls the tile and
+    /// field LRUs underneath it and follows `cached` unless given. Pass
+    /// `cached: false, cacheGrain: true` for transient swatches (an unsaved
+    /// draft) so the composite is not retained but the expensive field is
+    /// still shared with the overlay and with edits that only touch color.
     static func preview(
         for preset: TexturePreset,
         size: CGSize,
         backingScale: CGFloat = 2,
-        cached: Bool = true
+        cached: Bool = true,
+        cacheGrain: Bool? = nil
     ) -> NSImage {
         let scale = normalizedScale(backingScale)
         let sizeKey = "\(Double(size.width).bitPattern)x\(Double(size.height).bitPattern)"
@@ -205,7 +211,7 @@ enum TextureRenderer {
         }
         if cached { cacheMetrics.previewMisses += 1 }
 
-        let grain = tile(for: preset, backingScale: scale, cached: cached)
+        let grain = tile(for: preset, backingScale: scale, cached: cacheGrain ?? cached)
         let pixelWidth = max(1, Int((size.width * scale).rounded()))
         let pixelHeight = max(1, Int((size.height * scale).rounded()))
         let backdrop: NSColor = preset.isDark
