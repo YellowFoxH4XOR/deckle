@@ -44,8 +44,12 @@ enum URLCommands {
             func normalize(_ s: String) -> String {
                 s.lowercased().filter(\.isLetter)
             }
-            let query = normalize(params["id"] ?? params["name"] ?? "")
-            guard !query.isEmpty else { return }
+            let rawQuery = params["id"] ?? params["name"] ?? ""
+            let query = normalize(rawQuery)
+            guard !query.isEmpty else {
+                NSLog("[Deckle url] texture command missing id or name: %@", url.absoluteString)
+                return
+            }
             if let preset = TexturePreset.all.first(where: {
                 normalize($0.id) == query || normalize($0.name) == query
             }) {
@@ -54,6 +58,8 @@ enum URLCommands {
                 normalize($0.id) == query || normalize($0.name) == query
             }) {
                 state.textureID = custom.id
+            } else {
+                NSLog("[Deckle url] no paper matches texture query %@", rawQuery)
             }
         case "intensity":
             if let percent = params["percent"].flatMap(Double.init) ?? params["value"].flatMap(Double.init), percent.isFinite {
@@ -70,7 +76,7 @@ enum URLCommands {
                 state.grainStrength = min(max(strength, 0.25), 2.0)
             }
         default:
-            break
+            NSLog("[Deckle url] unrecognized command host %@ in %@", url.host ?? "<none>", url.absoluteString)
         }
     }
 }
