@@ -73,11 +73,7 @@ final class AppState: ObservableObject {
     }
 
     @Published var ruleApps: [RuleApp] {
-        didSet {
-            if let data = try? JSONEncoder().encode(ruleApps) {
-                defaults.set(data, forKey: Keys.ruleApps)
-            }
-        }
+        didSet { persist(ruleApps, forKey: Keys.ruleApps) }
     }
 
     /// Visibility verdict for the given frontmost app. Deckle itself is
@@ -96,9 +92,7 @@ final class AppState: ObservableObject {
     /// User-created papers, editable in the Paper Mill.
     @Published var customPapers: [CustomPaper] {
         didSet {
-            if let data = try? JSONEncoder().encode(customPapers) {
-                defaults.set(data, forKey: Keys.customPapers)
-            }
+            persist(customPapers, forKey: Keys.customPapers)
             // If the active paper was deleted, fall back to the default.
             if !customPapers.contains(where: { $0.id == textureID }),
                textureID.hasPrefix("custom-"),
@@ -117,11 +111,7 @@ final class AppState: ObservableObject {
     @Published var isComparingOriginal = false
 
     @Published var deskSetups: [DeskSetup] {
-        didSet {
-            if let data = try? JSONEncoder().encode(deskSetups) {
-                defaults.set(data, forKey: Keys.deskSetups)
-            }
-        }
+        didSet { persist(deskSetups, forKey: Keys.deskSetups) }
     }
 
     func paperExists(id: String) -> Bool {
@@ -225,12 +215,9 @@ final class AppState: ObservableObject {
         grainStrength = defaults.object(forKey: Keys.grainStrength) as? Double ?? 1.0
         matteStrength = defaults.object(forKey: Keys.matteStrength) as? Double ?? 0.0
         appRuleMode = AppRuleMode(rawValue: defaults.string(forKey: Keys.appRuleMode) ?? "") ?? .everywhere
-        ruleApps = defaults.data(forKey: Keys.ruleApps)
-            .flatMap { try? JSONDecoder().decode([RuleApp].self, from: $0) } ?? []
-        customPapers = defaults.data(forKey: Keys.customPapers)
-            .flatMap { try? JSONDecoder().decode([CustomPaper].self, from: $0) } ?? []
-        deskSetups = defaults.data(forKey: Keys.deskSetups)
-            .flatMap { try? JSONDecoder().decode([DeskSetup].self, from: $0) }
+        ruleApps = Self.restore([RuleApp].self, forKey: Keys.ruleApps, from: defaults) ?? []
+        customPapers = Self.restore([CustomPaper].self, forKey: Keys.customPapers, from: defaults) ?? []
+        deskSetups = Self.restore([DeskSetup].self, forKey: Keys.deskSetups, from: defaults)
             .map { Array($0.filter(\.hasValidSettings).prefix(8)) } ?? DeskSetup.starters
 
         // Recover older preferences written by non-finite automation input.
@@ -239,6 +226,33 @@ final class AppState: ObservableObject {
             ? [0.5, 1, 2, 4].min(by: { abs($0 - grainScale) < abs($1 - grainScale) }) ?? 1 : 1
         grainStrength = grainStrength.isFinite ? min(max(grainStrength, 0.25), 2) : 1
         matteStrength = matteStrength.isFinite ? min(max(matteStrength, 0), 1) : 0
+    }
+
+    /// Writes a JSON-persisted collection. An encode failure is logged and the
+    /// previously stored bytes are left untouched.
+    private func persist<T: Encodable>(_ value: T, forKey key: String) {
+        do {
+            defaults.set(try JSONEncoder().encode(value), forKey: key)
+        } catch {
+            NSLog("[Deckle persistence] failed to encode \(key): \(error)")
+        }
+    }
+
+    /// Reads a JSON-persisted collection. Returns nil when nothing is stored.
+    /// When the stored bytes fail to decode, they are logged and moved to
+    /// `<key>.corrupt` so the next write does not destroy them, and nil is
+    /// returned so the caller can fall back to its default.
+    private static func restore<T: Decodable>(_ type: T.Type, forKey key: String,
+                                              from defaults: UserDefaults) -> T? {
+        guard let data = defaults.data(forKey: key) else { return nil }
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            NSLog("[Deckle persistence] failed to decode \(key) (\(data.count) bytes), "
+                  + "preserving as \(key).corrupt: \(error)")
+            defaults.set(data, forKey: key + ".corrupt")
+            return nil
+        }
     }
 
     private func scheduleSnoozeExpiry() {

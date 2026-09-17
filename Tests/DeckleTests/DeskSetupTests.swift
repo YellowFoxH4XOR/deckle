@@ -115,4 +115,20 @@ final class DeskSetupTests: XCTestCase {
             XCTAssertEqual(recovered.matteStrength, 0)
         }
     }
+
+    func testUndecodableStoredLibrariesArePreservedUnderCorruptKeys() throws {
+        try withState { _, defaults in
+            let garbage = Data("not json".utf8)
+            for key in ["deskSetups", "customPapers", "ruleApps"] { defaults.set(garbage, forKey: key) }
+            let recovered = AppState(defaults: defaults)
+            XCTAssertEqual(recovered.deskSetups, DeskSetup.starters)
+            XCTAssertTrue(recovered.customPapers.isEmpty)
+            XCTAssertTrue(recovered.ruleApps.isEmpty)
+            XCTAssertTrue(recovered.saveDeskSetup(name: "After corruption"))
+            for key in ["deskSetups", "customPapers", "ruleApps"] {
+                XCTAssertEqual(defaults.data(forKey: "\(key).corrupt"), garbage)
+            }
+            XCTAssertNotEqual(defaults.data(forKey: "deskSetups"), garbage)
+        }
+    }
 }
