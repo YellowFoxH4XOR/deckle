@@ -490,12 +490,15 @@ private struct PaperMillView: View {
                             .font(.caption)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                     }
                     Slider(
                         value: $state.intensity,
                         in: 0.05...0.45,
                         onEditingChanged: { isAdjusting = $0 }
                     )
+                    .accessibilityLabel("Intensity")
+                    .accessibilityValue("\(Int(state.intensity * 100))%")
                     Text("Shared with the menu — the level this paper will actually be seen at.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
@@ -640,11 +643,14 @@ private struct PaperMillView: View {
                 .font(.caption)
                 .frame(width: 48, alignment: .leading)
             Slider(value: value, in: range)
+                .accessibilityLabel(label)
+                .accessibilityValue("\(Int(value.wrappedValue * 100))%")
             Text("\(Int(value.wrappedValue * 100))%")
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .frame(width: 38, alignment: .trailing)
+                .accessibilityHidden(true)
         }
     }
 
@@ -655,11 +661,14 @@ private struct PaperMillView: View {
                 .font(.caption)
                 .frame(width: 48, alignment: .leading)
             Slider(value: value, in: 0...(Double.pi / 2))
+                .accessibilityLabel(label)
+                .accessibilityValue("\(Int((value.wrappedValue * 180 / .pi).rounded())) degrees")
             Text("\(Int((value.wrappedValue * 180 / .pi).rounded()))°")
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .frame(width: 38, alignment: .trailing)
+                .accessibilityHidden(true)
         }
     }
 }
