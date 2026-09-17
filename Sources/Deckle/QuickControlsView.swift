@@ -10,6 +10,7 @@ struct QuickControlsView: View {
     @Binding var isExpanded: Bool
     @Binding var selectedTab: ControlTab
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var launchAtLoginStatus = SMAppService.mainApp.status
 
     enum ControlTab: String, CaseIterable, Identifiable {
         case grain = "Grain"
@@ -420,6 +421,15 @@ struct QuickControlsView: View {
                 .font(.system(size: 12))
                 .disabled(!isBundled)
 
+            if launchAtLoginStatus == .requiresApproval {
+                Button("Approve Deckle in System Settings › Login Items") {
+                    SMAppService.openSystemSettingsLoginItems()
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 10))
+                .foregroundStyle(.orange)
+            }
+
             Toggle("Install updates automatically", isOn: $updater.autoInstall)
                 .toggleStyle(.checkbox)
                 .font(.system(size: 12))
@@ -521,9 +531,13 @@ struct QuickControlsView: View {
                     } else {
                         try SMAppService.mainApp.unregister()
                     }
+                    launchAtLoginStatus = SMAppService.mainApp.status
                     launchAtLogin = enable
                 } catch {
-                    launchAtLogin = SMAppService.mainApp.status == .enabled
+                    let status = SMAppService.mainApp.status
+                    NSLog("[Deckle login] \(enable ? "register" : "unregister") failed (status \(status.rawValue)): \(error.localizedDescription)")
+                    launchAtLoginStatus = status
+                    launchAtLogin = status == .enabled
                 }
             }
         )
