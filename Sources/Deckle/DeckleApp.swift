@@ -21,8 +21,13 @@ struct DeckleApp: App {
 struct MenuBarLabel: View {
     @ObservedObject private var state = AppState.shared
 
+    private var isOverlayOn: Bool {
+        state.shouldShowOverlay && !state.isComparingOriginal
+    }
+
     var body: some View {
-        Image(nsImage: state.shouldShowOverlay && !state.isComparingOriginal ? Icons.menuOn : Icons.menuOff)
+        Image(nsImage: isOverlayOn ? Icons.menuOn : Icons.menuOff)
+            .accessibilityLabel(isOverlayOn ? "Deckle overlay on" : "Deckle overlay off")
     }
 }
 
