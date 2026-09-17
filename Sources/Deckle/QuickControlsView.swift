@@ -171,7 +171,7 @@ struct QuickControlsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Picker("", selection: $state.grainScale) {
+                Picker("Grain Scale", selection: $state.grainScale) {
                     Text("Fine").tag(0.5)
                     Text("Normal").tag(1.0)
                     Text("Coarse").tag(2.0)
@@ -200,6 +200,8 @@ struct QuickControlsView: View {
 
                 Slider(value: $state.grainStrength, in: 0.25...2.0)
                     .tint(.accentColor)
+                    .accessibilityLabel("Grain visibility")
+                    .accessibilityValue("\(Int(state.grainStrength * 100)) percent")
             }
         }
         .disabled(!state.isEnabled)
@@ -312,7 +314,7 @@ struct QuickControlsView: View {
 
     private var appRulesControls: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Picker("", selection: $state.appRuleMode) {
+            Picker("App Rule Mode", selection: $state.appRuleMode) {
                 Text("Everywhere").tag(AppState.AppRuleMode.everywhere)
                 Text("Except…").tag(AppState.AppRuleMode.except)
                 Text("Only…").tag(AppState.AppRuleMode.only)
@@ -341,6 +343,8 @@ struct QuickControlsView: View {
                                             .font(.system(size: 12))
                                     }
                                     .buttonStyle(.plain)
+                                    .accessibilityLabel("Remove \(app.name)")
+                                    .help("Remove \(app.name)")
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
