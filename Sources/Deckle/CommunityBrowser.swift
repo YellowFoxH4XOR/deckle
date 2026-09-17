@@ -22,6 +22,7 @@ final class CommunityBrowser: ObservableObject {
     @Published var entries: [Entry] = []
     @Published var status: Status = .idle
     @Published var installing: Set<String> = []
+    @Published var installFailures: [String: String] = [:]
 
     private var window: NSWindow?
     private static let base = "https://raw.githubusercontent.com/YellowFoxH4XOR/deckle-papers/main"
@@ -56,17 +57,43 @@ final class CommunityBrowser: ObservableObject {
         }
     }
 
-    func install(_ entry: Entry) async {
-        // Only fetch files listed by the index, never arbitrary paths.
-        let file = entry.file.replacingOccurrences(of: "..", with: "")
-        guard let url = URL(string: "\(Self.base)/papers/\(file)") else { return }
-        installing.insert(entry.id)
-        defer { installing.remove(entry.id) }
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              var paper = try? JSONDecoder().decode(CustomPaper.self, from: data) else { return }
+    /// Strips every `..` sequence so only files listed by the index are fetched, never arbitrary paths.
+    static func sanitizedPath(_ file: String) -> String {
+        var path = file
+        while path.contains("..") {
+            path = path.replacingOccurrences(of: "..", with: "")
+        }
+        return path
+    }
+
+    /// Decodes a community paper and assigns it a fresh id so installs never overwrite local papers.
+    static func importedPaper(from data: Data) throws -> CustomPaper {
+        var paper = try JSONDecoder().decode(CustomPaper.self, from: data)
         paper.id = "custom-\(UUID().uuidString.lowercased())"
-        AppState.shared.customPapers.append(paper)
-        AppState.shared.textureID = paper.id
+        return paper
+    }
+
+    func install(_ entry: Entry) async {
+        guard !installing.contains(entry.id) else { return }
+        installing.insert(entry.id)
+        installFailures[entry.id] = nil
+        defer { installing.remove(entry.id) }
+        do {
+            let file = Self.sanitizedPath(entry.file)
+            guard let url = URL(string: "\(Self.base)/papers/\(file)") else {
+                throw URLError(.badURL)
+            }
+            let (data, response) = try await URLSession.shared.data(from: url)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode)"])
+            }
+            let paper = try Self.importedPaper(from: data)
+            AppState.shared.customPapers.append(paper)
+            AppState.shared.textureID = paper.id
+        } catch {
+            NSLog("[Deckle community] install failed: \(entry.file): \(error.localizedDescription)")
+            installFailures[entry.id] = "Couldn't install this paper"
+        }
     }
 }
 
@@ -95,11 +122,20 @@ private struct CommunityView: View {
                                     Text("\(entry.description) — \(entry.author)")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                    if let failure = browser.installFailures[entry.id] {
+                                        Text(failure)
+                                            .font(.caption)
+                                            .foregroundStyle(.red)
+                                    }
                                 }
                                 Spacer()
-                                Button(browser.installing.contains(entry.id) ? "…" : "Install") {
+                                let isInstalling = browser.installing.contains(entry.id)
+                                let label = isInstalling ? "…"
+                                    : browser.installFailures[entry.id] == nil ? "Install" : "Retry"
+                                Button(label) {
                                     Task { await browser.install(entry) }
                                 }
+                                .disabled(isInstalling)
                                 .controlSize(.small)
                             }
                             .padding(.vertical, 5)
