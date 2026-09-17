@@ -25,6 +25,7 @@ struct HeroCardView: View {
                             .tracking(1.8)
                         Spacer()
                         Image(systemName: "leaf")
+                            .accessibilityHidden(true)
                     }
                     Spacer()
                     Text(state.texture.name)
@@ -57,6 +58,7 @@ struct HeroCardView: View {
             }
             Slider(value: $state.intensity, in: 0.05...0.45)
                 .accessibilityLabel("Paper intensity")
+                .accessibilityValue("\(Int(state.intensity * 100)) percent")
 
             HStack {
                 Text("Matte finish").font(.system(size: 12, weight: .medium))
